@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aurora Borealis Ceiling</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; cursor: none; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    #ui {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 12px; opacity: 0; transition: opacity 0.4s;
+      z-index: 10;
+    }
+    body:hover #ui { opacity: 1; }
+    .btn {
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.7); padding: 8px 18px; border-radius: 20px;
+      font: 12px/1 'Inter', system-ui, sans-serif; cursor: pointer;
+      transition: all 0.2s; backdrop-filter: blur(8px);
+    }
+    .btn:hover { background: rgba(255,255,255,0.15); color: #fff; border-color: rgba(255,255,255,0.3); }
+    .btn.active { background: rgba(0,212,255,0.2); border-color: rgba(0,212,255,0.5); color: #00d4ff; }
+    #info {
+      position: fixed; top: 20px; right: 20px; z-index: 10;
+      font: 11px/1.4 'Inter', system-ui, sans-serif;
+      color: rgba(255,255,255,0.3); text-align: right; opacity: 0; transition: opacity 0.4s;
+    }
+    body:hover #info { opacity: 1; }
+    #fps { position: fixed; top: 20px; left: 20px; z-index: 10;
+      font: 11px 'SF Mono', 'Fira Code', monospace; color: rgba(255,255,255,0.2); opacity: 0; transition: opacity 0.4s;
+    }
+    body:hover #fps { opacity: 1; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="fps"></div>
+  <div id="info">Aurora Borealis<br>Move mouse to shift colors<br>Click to toggle full-screen</div>
+  <div id="ui">
+    <button class="btn active" data-preset="aurora">Aurora</button>
+    <button class="btn" data-preset="sunset">Sunset</button>
+    <button class="btn" data-preset="ocean">Ocean</button>
+    <button class="btn" data-preset="nebula">Nebula</button>
+    <button class="btn" data-preset="forest">Forest</button>
+  </div>
+
+<script>
+"use strict";
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'high-performance' });
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;padding:40px;font-family:sans-serif">WebGL2 required</p>'; throw new Error('No WebGL2'); }
+
+let W, H;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const presets = {
+  aurora:  { c1: [0.0, 0.8, 0.4], c2: [0.0, 0.4, 0.9], c3: [0.2, 0.0, 0.9], speed: 0.15, intensity: 1.0, layers: 5 },
+  sunset:  { c1: [0.9, 0.2, 0.0], c2: [0.9, 0.5, 0.0], c3: [0.6, 0.0, 0.4], speed: 0.1,  intensity: 0.9, layers: 4 },
+  ocean:   { c1: [0.0, 0.3, 0.7], c2: [0.0, 0.6, 0.8], c3: [0.0, 0.1, 0.4], speed: 0.12, intensity: 0.8, layers: 6 },
+  nebula:  { c1: [0.5, 0.0, 0.8], c2: [0.8, 0.0, 0.4], c3: [0.0, 0.2, 0.9], speed: 0.08, intensity: 1.1, layers: 5 },
+  forest:  { c1: [0.0, 0.5, 0.2], c2: [0.1, 0.7, 0.1], c3: [0.0, 0.3, 0.3], speed: 0.1,  intensity: 0.7, layers: 4 },
+};
+
+let preset = { ...presets.aurora };
+let mouseX = 0.5, mouseY = 0.5;
+let targetPreset = presets.aurora;
+let currentPreset = { c1: [...presets.aurora.c1], c2: [...presets.aurora.c2], c3: [...presets.aurora.c3], speed: presets.aurora.speed, intensity: presets.aurora.intensity, layers: presets.aurora.layers };
+
+document.addEventListener('mousemove', e => {
+  mouseX = e.clientX / W;
+  mouseY = e.clientY / H;
+});
+
+document.addEventListener('click', () => {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+  else document.exitFullscreen();
+});
+
+document.querySelectorAll('.btn').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    targetPreset = presets[btn.dataset.preset];
+  });
+});
+
+const vertSrc = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+const fragSrc = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+uniform vec3 u_color1;
+uniform vec3 u_color2;
+uniform vec3 u_color3;
+uniform float u_intensity;
+uniform float u_speed;
+
+#define PI 3.14159265359
+#define TAU 6.28318530718
+
+// Improved simplex noise
+vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 permute(vec4 x) { return mod289(((x * 34.0) + 1.0) * x); }
+vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+float snoise(vec3 v) {
+  const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+  vec3 i = floor(v + dot(v, C.yyy));
+  vec3 x0 = v - i + dot(i, C.xxx);
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min(g.xyz, l.zxy);
+  vec3 i2 = max(g.xyz, l.zxy);
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy;
+  vec3 x3 = x0 - D.yyy;
+  i = mod289(i);
+  vec4 p = permute(permute(permute(
+    i.z + vec4(0.0, i1.z, i2.z, 1.0))
+  + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+  + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+  float n_ = 0.142857142857;
+  vec3 ns = n_ * D.wyz - D.xzx;
+  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_);
+  vec4 x = x_ * ns.x + ns.yyyy;
+  vec4 y = y_ * ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+  vec4 b0 = vec4(x.xy, y.xy);
+  vec4 b1 = vec4(x.zw, y.zw);
+  vec4 s0 = floor(b0) * 2.0 + 1.0;
+  vec4 s1 = floor(b1) * 2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+  vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+  vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+  vec3 p0 = vec3(a0.xy, h.x);
+  vec3 p1 = vec3(a0.zw, h.y);
+  vec3 p2 = vec3(a1.xy, h.z);
+  vec3 p3 = vec3(a1.zw, h.w);
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+}
+
+float fbm(vec3 p, int octaves) {
+  float value = 0.0;
+  float amplitude = 0.5;
+  float frequency = 1.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= octaves) break;
+    value += amplitude * snoise(p * frequency);
+    amplitude *= 0.5;
+    frequency *= 2.0;
+  }
+  return value;
+}
+
+void main() {
+  vec2 uv = v_uv;
+  float t = u_time * u_speed;
+
+  // Mouse influence on color shifting
+  float mx = (u_mouse.x - 0.5) * 0.4;
+  float my = (u_mouse.y - 0.5) * 0.3;
+
+  // Base gradient - dark sky
+  vec3 skyColor = vec3(0.01, 0.01, 0.03);
+
+  // Aurora layers
+  vec3 auroraColor = vec3(0.0);
+  float aurorMask = 0.0;
+
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    float layerY = 0.3 + fi * 0.08 + my * 0.2;
+    float layerWidth = 0.15 + fi * 0.02;
+
+    // Warped noise for organic shape
+    vec3 noisePos = vec3(
+      uv.x * 2.0 + t * (0.3 + fi * 0.1) + mx,
+      uv.y * 1.5 - t * 0.05,
+      fi * 0.7 + t * 0.02
+    );
+
+    float warp = fbm(noisePos + vec3(snoise(noisePos * 2.0) * 0.5), 4);
+    float curtain = fbm(noisePos * vec3(1.0, 2.0, 1.0) + vec3(warp * 0.8), 5);
+
+    // Curtain shape - vertical streaks
+    float streak = snoise(vec3(uv.x * 8.0 + t * 0.2, uv.y * 2.0, fi + t * 0.1));
+    streak = pow(abs(streak), 0.5);
+
+    // Distance from center band
+    float dy = uv.y - layerY;
+    float band = exp(-dy * dy / (layerWidth * layerWidth));
+
+    // Combine
+    float layerMask = band * curtain * streak * 0.5;
+    aurorMask += layerMask;
+
+    // Color per layer
+    float colorMix = snoise(vec3(fi * 0.5, t * 0.05, 0.0)) * 0.5 + 0.5;
+    vec3 layerColor;
+    if (colorMix < 0.33) {
+      layerColor = mix(u_color1, u_color2, colorMix * 3.0);
+    } else if (colorMix < 0.66) {
+      layerColor = mix(u_color2, u_color3, (colorMix - 0.33) * 3.0);
+    } else {
+      layerColor = mix(u_color3, u_color1, (colorMix - 0.66) * 3.0);
+    }
+
+    auroraColor += layerColor * layerMask;
+  }
+
+  aurorMask = clamp(aurorMask, 0.0, 1.0);
+  auroraColor *= u_intensity;
+
+  // Stars
+  vec2 starUV = uv * 300.0;
+  vec2 starCell = floor(starUV);
+  vec2 starFrac = fract(starUV) - 0.5;
+  float starHash = fract(sin(dot(starCell, vec2(12.9898, 78.233))) * 43758.5453);
+  float starBright = step(0.97, starHash);
+  float starDist = length(starFrac);
+  float star = starBright * smoothstep(0.15, 0.0, starDist);
+  float twinkle = sin(t * 2.0 + starHash * 6.28) * 0.3 + 0.7;
+  star *= twinkle;
+
+  // Subtle horizon glow
+  float horizon = exp(-uv.y * uv.y * 8.0) * 0.15;
+  vec3 horizonColor = mix(u_color1, vec3(0.1, 0.05, 0.2), 0.5);
+
+  // Composite
+  vec3 color = skyColor;
+  color += auroraColor;
+  color += vec3(star) * (1.0 - aurorMask * 0.8);
+  color += horizonColor * horizon;
+
+  // Subtle vignette
+  float vignette = 1.0 - dot(uv - 0.5, uv - 0.5) * 0.5;
+  color *= vignette;
+
+  // Tone mapping
+  color = color / (color + vec3(1.0));
+
+  // Gamma
+  color = pow(color, vec3(1.0 / 2.2));
+
+  fragColor = vec4(color, 1.0);
+}`;
+
+function compileShader(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error('Shader error:', gl.getShaderInfoLog(s));
+    gl.deleteShader(s);
+    return null;
+  }
+  return s;
+}
+
+const vs = compileShader(vertSrc, gl.VERTEX_SHADER);
+const fs = compileShader(fragSrc, gl.FRAGMENT_SHADER);
+const prog = gl.createProgram();
+gl.attachShader(prog, vs);
+gl.attachShader(prog, fs);
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  console.error('Program error:', gl.getProgramInfoLog(prog));
+  throw new Error('Program link failed');
+}
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, 'a_pos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+const uTime = gl.getUniformLocation(prog, 'u_time');
+const uRes = gl.getUniformLocation(prog, 'u_resolution');
+const uMouse = gl.getUniformLocation(prog, 'u_mouse');
+const uC1 = gl.getUniformLocation(prog, 'u_color1');
+const uC2 = gl.getUniformLocation(prog, 'u_color2');
+const uC3 = gl.getUniformLocation(prog, 'u_color3');
+const uIntensity = gl.getUniformLocation(prog, 'u_intensity');
+const uSpeed = gl.getUniformLocation(prog, 'u_speed');
+
+let startTime = performance.now();
+let frameCount = 0;
+let lastFPSTime = startTime;
+const fpsEl = document.getElementById('fps');
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpArr(a, b, t) { return a.map((v, i) => lerp(v, b[i], t)); }
+
+function render(now) {
+  requestAnimationFrame(render);
+
+  const elapsed = (now - startTime) * 0.001;
+
+  // Smooth interpolation between presets
+  const lerpSpeed = 0.02;
+  currentPreset.c1 = lerpArr(currentPreset.c1, targetPreset.c1, lerpSpeed);
+  currentPreset.c2 = lerpArr(currentPreset.c2, targetPreset.c2, lerpSpeed);
+  currentPreset.c3 = lerpArr(currentPreset.c3, targetPreset.c3, lerpSpeed);
+  currentPreset.speed = lerp(currentPreset.speed, targetPreset.speed, lerpSpeed);
+  currentPreset.intensity = lerp(currentPreset.intensity, targetPreset.intensity, lerpSpeed);
+
+  gl.uniform1f(uTime, elapsed);
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform2f(uMouse, mouseX, mouseY);
+  gl.uniform3fv(uC1, currentPreset.c1);
+  gl.uniform3fv(uC2, currentPreset.c2);
+  gl.uniform3fv(uC3, currentPreset.c3);
+  gl.uniform1f(uIntensity, currentPreset.intensity);
+  gl.uniform1f(uSpeed, currentPreset.speed);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  // FPS counter
+  frameCount++;
+  if (now - lastFPSTime >= 1000) {
+    fpsEl.textContent = frameCount + ' FPS';
+    frameCount = 0;
+    lastFPSTime = now;
+  }
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

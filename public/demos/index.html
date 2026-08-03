@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Projection Mapper — Demos</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #e0e0e0; font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+    .hero {
+      text-align: center; padding: 80px 20px 40px;
+      background: linear-gradient(180deg, rgba(0,212,255,0.05) 0%, transparent 100%);
+    }
+    .hero h1 { font-size: 48px; font-weight: 800; margin-bottom: 8px; }
+    .hero h1 span { background: linear-gradient(135deg, #00d4ff, #ff3366, #33ff88); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p { color: #888; font-size: 16px; max-width: 500px; margin: 0 auto 30px; }
+    .hero .stats { display: flex; gap: 32px; justify-content: center; font-size: 13px; color: #666; }
+    .hero .stats b { color: #00d4ff; font-size: 18px; display: block; margin-bottom: 2px; }
+    .grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px; padding: 20px 40px 80px; max-width: 1200px; margin: 0 auto;
+    }
+    .card {
+      background: #111; border: 1px solid #222; border-radius: 16px;
+      overflow: hidden; transition: all 0.3s; cursor: pointer; text-decoration: none; color: inherit;
+    }
+    .card:hover { border-color: #00d4ff; transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,212,255,0.1); }
+    .card-preview {
+      height: 180px; overflow: hidden; position: relative;
+    }
+    .card-preview iframe { width: 200%; height: 200%; transform: scale(0.5); transform-origin: top left; pointer-events: none; border: none; }
+    .card-preview canvas { width: 100%; height: 100%; object-fit: cover; }
+    .card-body { padding: 20px; }
+    .card-body h3 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+    .card-body p { font-size: 13px; color: #888; line-height: 1.5; margin-bottom: 12px; }
+    .tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tag { font-size: 10px; background: #1a1a1a; color: #666; padding: 3px 8px; border-radius: 4px; }
+    .badge { position: absolute; top: 12px; right: 12px; font-size: 10px; padding: 4px 10px; border-radius: 6px; font-weight: 600; }
+    .badge-viral { background: rgba(255,51,102,0.2); color: #ff3366; border: 1px solid rgba(255,51,102,0.3); }
+    .badge-ambient { background: rgba(0,212,255,0.2); color: #00d4ff; border: 1px solid rgba(0,212,255,0.3); }
+    .badge-interactive { background: rgba(51,255,136,0.2); color: #33ff88; border: 1px solid rgba(51,255,136,0.3); }
+    .badge-game { background: rgba(255,170,0,0.2); color: #ffaa00; border: 1px solid rgba(255,170,0,0.3); }
+    footer { text-align: center; padding: 40px; color: #444; font-size: 12px; border-top: 1px solid #1a1a1a; }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>Projection <span>Mapper</span></h1>
+    <p>Click any demo to launch it. Best on a projector or second screen. Move mouse to interact.</p>
+    <div class="stats">
+      <div><b>7</b>Demos</div>
+      <div><b>WebGL2</b>Rendering</div>
+      <div><b>60fps</b>Target</div>
+      <div><b>Real-time</b>Interaction</div>
+    </div>
+  </div>
+  <div class="grid">
+    <a class="card" href="demos/aurora.html" target="_blank">
+      <div class="card-preview" style="background: linear-gradient(135deg, #001a00, #000d33, #1a0033);">
+        <span class="badge badge-ambient">AMBIENT</span>
+      </div>
+      <div class="card-body">
+        <h3>Aurora Borealis Ceiling</h3>
+        <p>Northern lights projected on your ceiling. 5 color presets (Aurora, Sunset, Ocean, Nebula, Forest). Move mouse to shift colors. Perfect for overnight ambient.</p>
+        <div class="tags"><span class="tag">WebGL</span><span class="tag">GLSL</span><span class="tag">noise</span><span class="tag">ambient</span><span class="tag">bedroom</span></div>
+      </div>
+    </a>
+    <a class="card" href="demos/water-caustics.html" target="_blank">
+      <div class="card-preview" style="background: linear-gradient(135deg, #000d1a, #001a33, #003333);">
+        <span class="badge badge-ambient">AMBIENT</span>
+      </div>
+      <div class="card-body">
+        <h3>Water Caustics</h3>
+        <p>Underwater light patterns on ceiling/walls. 4 modes: Deep Ocean, Pool, Tropical, Moonlit. Multi-layer caustic simulation with light rays.</p>
+        <div class="tags"><span class="tag">WebGL</span><span class="tag">caustics</span><span class="tag">underwater</span><span class="tag">ambient</span></div>
+      </div>
+    </a>
+    <a class="card" href="demos/particle-symphony.html" target="_blank">
+      <div class="card-preview" style="background: linear-gradient(135deg, #1a0033, #33001a, #001a33);">
+        <span class="badge badge-viral">VIRAL</span>
+      </div>
+      <div class="card-body">
+        <h3>Particle Symphony</h3>
+        <p>5000+ particles react to music via microphone. Bass = explosions, mids = orbits, highs = sparkles. 5 presets. Demo mode works without mic.</p>
+        <div class="tags"><span class="tag">WebGL</span><span class="tag">audio</span><span class="tag">particles</span><span class="tag">music</span><span class="tag">reactive</span></div>
+      </div>
+    </a>
+    <a class="card" href="demos/bouncing-ball.html" target="_blank">
+      <div class="card-preview" style="background: linear-gradient(135deg, #0d0d0d, #1a1a1a, #0d1a0d);">
+        <span class="badge badge-interactive">INTERACTIVE</span>
+      </div>
+      <div class="card-body">
+        <h3>Bouncing Ball Physics</h3>
+        <p>Click to spawn balls with real physics. Elastic collisions, mouse push, trails. 5 modes: Classic, Neon, Fire, Rainbow, Zero G.</p>
+        <div class="tags"><span class="tag">Canvas2D</span><span class="tag">physics</span><span class="tag">collision</span><span class="tag">interactive</span></div>
+      </div>
+    </a>
+    <a class="card" href="demos/mario-shelf.html" target="_blank">
+      <div class="card-preview" style="background: linear-gradient(135deg, #6b8cff, #5a7aee, #4a6add);">
+        <span class="badge badge-game">GAME</span>
+      </div>
+      <div class="card-body">
+        <h3>Mario Shelf</h3>
+        <p>Classic Mario platformer projected on your wall/shelf. Run, jump, collect coins, stomp enemies. Full game with scoring and lives.</p>
+        <div class="tags"><span class="tag">Canvas2D</span><span class="tag">platformer</span><span class="tag">mario</span><span class="tag">retro</span><span class="tag">game</span></div>
+      </div>
+    </a>
+    <a class="card" href="demos/pacman.html" target="_blank">
+      <div class="card-preview" style="background: #000;">
+        <span class="badge badge-game">GAME</span>
+      </div>
+      <div class="card-body">
+        <h3>Pac-Man Floor</h3>
+        <p>Full Pac-Man on your floor/wall. Arrow keys or swipe. 4 AI ghosts with unique behaviors. Power pellets, tunnel wrapping, scoring.</p>
+        <div class="tags"><span class="tag">Canvas2D</span><span class="tag">pacman</span><span class="tag">retro</span><span class="tag">AI</span><span class="tag">game</span></div>
+      </div>
+    </a>
+    <a class="card" href="demos/graffiti-wall.html" target="_blank">
+      <div class="card-preview" style="background: #0a0a0a;">
+        <span class="badge badge-interactive">INTERACTIVE</span>
+      </div>
+      <div class="card-body">
+        <h3>Digital Graffiti Wall</h3>
+        <p>Full wall becomes your canvas. Brush, spray can, neon glow, eraser. 8 colors, adjustable size, undo, save as PNG.</p>
+        <div class="tags"><span class="tag">Canvas2D</span><span class="tag">drawing</span><span class="tag">graffiti</span><span class="tag">creative</span></div>
+      </div>
+    </a>
+  </div>
+  <footer>Projection Mapper v2.0 — WebGL2 Real-time Projection Mapping</footer>
+</body>
+</html>

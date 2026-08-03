@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bouncing Ball Physics</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    #ui {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 12px; opacity: 0; transition: opacity 0.4s; z-index: 10;
+    }
+    body:hover #ui { opacity: 1; }
+    .btn {
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.7); padding: 8px 18px; border-radius: 20px;
+      font: 12px/1 'Inter', system-ui, sans-serif; cursor: pointer;
+      transition: all 0.2s; backdrop-filter: blur(8px);
+    }
+    .btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+    .btn.active { background: rgba(0,200,100,0.2); border-color: rgba(0,200,100,0.5); color: #00c864; }
+    #info {
+      position: fixed; top: 20px; right: 20px; z-index: 10;
+      font: 11px/1.4 'Inter', sans-serif; color: rgba(255,255,255,0.3); text-align: right;
+      opacity: 0; transition: opacity 0.4s;
+    }
+    body:hover #info { opacity: 1; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="info">Click to spawn balls<br>Right-click to remove<br>Mouse pushes balls</div>
+  <div id="ui">
+    <button class="btn active" data-p="classic">Classic</button>
+    <button class="btn" data-p="neon">Neon</button>
+    <button class="btn" data-p="fire">Fire</button>
+    <button class="btn" data-p="rainbow">Rainbow</button>
+    <button class="btn" data-p="gravity">Zero G</button>
+  </div>
+<script>
+"use strict";
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W; canvas.height = H;
+}
+window.addEventListener('resize', resize);
+resize();
+
+const presets = {
+  classic: { gravity: 0.5, bounce: 0.85, friction: 0.999, trail: 0.08, maxBalls: 200 },
+  neon:    { gravity: 0.4, bounce: 0.92, friction: 0.998, trail: 0.05, maxBalls: 300 },
+  fire:    { gravity: -0.15, bounce: 0.9, friction: 0.997, trail: 0.03, maxBalls: 250 },
+  rainbow: { gravity: 0.3, bounce: 0.88, friction: 0.999, trail: 0.06, maxBalls: 300 },
+  gravity: { gravity: 0.02, bounce: 0.95, friction: 0.9995, trail: 0.04, maxBalls: 400 },
+};
+
+let settings = { ...presets.classic };
+let target = presets.classic;
+let mouseX = 0, mouseY = 0;
+let mouseDown = false;
+
+class Ball {
+  constructor(x, y) {
+    this.x = x || Math.random() * W;
+    this.y = y || Math.random() * H * 0.3;
+    this.vx = (Math.random() - 0.5) * 8;
+    this.vy = (Math.random() - 0.5) * 4;
+    this.radius = Math.random() * 15 + 8;
+    this.hue = Math.random() * 360;
+    this.mass = this.radius * this.radius;
+    this.trail = [];
+  }
+}
+
+const balls = [];
+
+// Spawn some initial balls
+for (let i = 0; i < 15; i++) {
+  balls.push(new Ball(W * 0.2 + Math.random() * W * 0.6, H * 0.2 + Math.random() * H * 0.4));
+}
+
+document.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+document.addEventListener('mousedown', e => {
+  if (e.target.closest('#ui')) return;
+  if (e.button === 0) {
+    balls.push(new Ball(mouseX, mouseY));
+    if (balls.length > settings.maxBalls) balls.shift();
+  }
+});
+document.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  // Remove closest ball
+  if (balls.length > 0) {
+    let minDist = Infinity, minIdx = 0;
+    balls.forEach((b, i) => {
+      const d = Math.hypot(b.x - mouseX, b.y - mouseY);
+      if (d < minDist) { minDist = d; minIdx = i; }
+    });
+    balls.splice(minIdx, 1);
+  }
+});
+document.addEventListener('click', e => {
+  if (e.target.closest('#ui')) return;
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+});
+document.querySelectorAll('.btn').forEach(b => {
+  b.addEventListener('click', e => {
+    e.stopPropagation();
+    document.querySelectorAll('.btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    target = presets[b.dataset.p];
+  });
+});
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+let lastTime = performance.now();
+
+function render(now) {
+  requestAnimationFrame(render);
+  const dt = Math.min((now - lastTime) / 16.67, 3);
+  lastTime = now;
+
+  // Smooth settings
+  settings.gravity = lerp(settings.gravity, target.gravity, 0.05);
+  settings.bounce = lerp(settings.bounce, target.bounce, 0.05);
+  settings.friction = lerp(settings.friction, target.friction, 0.05);
+  settings.trail = lerp(settings.trail, target.trail, 0.05);
+
+  // Fade background for trails
+  ctx.fillStyle = `rgba(0,0,0,${settings.trail})`;
+  ctx.fillRect(0, 0, W, H);
+
+  // Physics
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+
+    // Gravity
+    b.vy += settings.gravity * dt;
+
+    // Mouse push
+    const dx = b.x - mouseX;
+    const dy = b.y - mouseY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 150 && dist > 0) {
+      const force = (150 - dist) / 150 * 0.8;
+      b.vx += (dx / dist) * force * dt;
+      b.vy += (dy / dist) * force * dt;
+    }
+
+    // Friction
+    b.vx *= settings.friction;
+    b.vy *= settings.friction;
+
+    // Move
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+
+    // Bounce
+    if (b.x - b.radius < 0) { b.x = b.radius; b.vx = Math.abs(b.vx) * settings.bounce; }
+    if (b.x + b.radius > W) { b.x = W - b.radius; b.vx = -Math.abs(b.vx) * settings.bounce; }
+    if (b.y - b.radius < 0) { b.y = b.radius; b.vy = Math.abs(b.vy) * settings.bounce; }
+    if (b.y + b.radius > H) { b.y = H - b.radius; b.vy = -Math.abs(b.vy) * settings.bounce; }
+
+    // Ball-ball collision
+    for (let j = i + 1; j < balls.length; j++) {
+      const b2 = balls[j];
+      const dx2 = b2.x - b.x;
+      const dy2 = b2.y - b.y;
+      const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+      const minDist = b.radius + b2.radius;
+
+      if (dist2 < minDist && dist2 > 0) {
+        const nx = dx2 / dist2;
+        const ny = dy2 / dist2;
+        const overlap = minDist - dist2;
+
+        // Separate
+        const totalMass = b.mass + b2.mass;
+        b.x -= nx * overlap * (b2.mass / totalMass);
+        b.y -= ny * overlap * (b2.mass / totalMass);
+        b2.x += nx * overlap * (b.mass / totalMass);
+        b2.y += ny * overlap * (b.mass / totalMass);
+
+        // Elastic collision
+        const dvx = b.vx - b2.vx;
+        const dvy = b.vy - b2.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+
+        if (dvDotN > 0) {
+          const impulse = (2 * dvDotN) / totalMass;
+          b.vx -= impulse * b2.mass * nx * settings.bounce;
+          b.vy -= impulse * b2.mass * ny * settings.bounce;
+          b2.vx += impulse * b.mass * nx * settings.bounce;
+          b2.vy += impulse * b.mass * ny * settings.bounce;
+        }
+      }
+    }
+
+    // Update trail
+    b.trail.push({ x: b.x, y: b.y });
+    if (b.trail.length > 20) b.trail.shift();
+
+    // Speed-based hue shift
+    const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+    b.hue = (b.hue + speed * 0.5) % 360;
+
+    // Draw trail
+    if (b.trail.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(b.trail[0].x, b.trail[0].y);
+      for (let t = 1; t < b.trail.length; t++) {
+        ctx.lineTo(b.trail[t].x, b.trail[t].y);
+      }
+      ctx.strokeStyle = `hsla(${b.hue}, 80%, 60%, 0.3)`;
+      ctx.lineWidth = b.radius * 0.4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    // Draw ball
+    const speedNorm = Math.min(speed / 15, 1);
+    const glow = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.radius * 2);
+    glow.addColorStop(0, `hsla(${b.hue}, 80%, ${55 + speedNorm * 20}%, 0.9)`);
+    glow.addColorStop(0.4, `hsla(${b.hue}, 70%, ${45 + speedNorm * 15}%, 0.4)`);
+    glow.addColorStop(1, `hsla(${b.hue}, 60%, 40%, 0)`);
+
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.radius * 2, 0, Math.PI * 2);
+    ctx.fillStyle = glow;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+    const grad = ctx.createRadialGradient(b.x - b.radius * 0.3, b.y - b.radius * 0.3, 0, b.x, b.y, b.radius);
+    grad.addColorStop(0, `hsla(${b.hue}, 80%, 75%, 1)`);
+    grad.addColorStop(1, `hsla(${b.hue}, 70%, 50%, 1)`);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Specular highlight
+    ctx.beginPath();
+    ctx.arc(b.x - b.radius * 0.25, b.y - b.radius * 0.25, b.radius * 0.35, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${0.3 + speedNorm * 0.2})`;
+    ctx.fill();
+  }
+
+  // HUD
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.font = '11px SF Mono, monospace';
+  ctx.fillText(`Balls: ${balls.length}`, 20, 30);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

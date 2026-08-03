@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Particle Symphony</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; cursor: none; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    #ui {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 12px; opacity: 0; transition: opacity 0.4s; z-index: 10;
+    }
+    body:hover #ui { opacity: 1; }
+    .btn {
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.7); padding: 8px 18px; border-radius: 20px;
+      font: 12px/1 'Inter', system-ui, sans-serif; cursor: pointer;
+      transition: all 0.2s; backdrop-filter: blur(8px);
+    }
+    .btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+    .btn.active { background: rgba(255,100,200,0.2); border-color: rgba(255,100,200,0.5); color: #ff64c8; }
+    #mic-prompt {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 16px; padding: 40px 60px; text-align: center; z-index: 20;
+      backdrop-filter: blur(20px); cursor: pointer; transition: all 0.3s;
+    }
+    #mic-prompt:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,100,200,0.5); }
+    #mic-prompt h2 { color: #fff; font: 600 20px/1 'Inter', sans-serif; margin-bottom: 8px; }
+    #mic-prompt p { color: rgba(255,255,255,0.5); font: 14px/1.4 'Inter', sans-serif; }
+    #mic-prompt.hidden { opacity: 0; pointer-events: none; transform: translate(-50%, -50%) scale(0.95); }
+    #fps { position: fixed; top: 20px; left: 20px; z-index: 10;
+      font: 11px monospace; color: rgba(255,255,255,0.2); opacity: 0; transition: opacity 0.4s; }
+    body:hover #fps { opacity: 1; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="fps"></div>
+  <div id="mic-prompt">
+    <h2>Click to Start</h2>
+    <p>Microphone access required for music reactivity<br>or click anywhere for demo mode</p>
+  </div>
+  <div id="ui">
+    <button class="btn active" data-p="symphony">Symphony</button>
+    <button class="btn" data-p="bass">Bass Drop</button>
+    <button class="btn" data-p="ethereal">Ethereal</button>
+    <button class="btn" data-p="fire">Fire</button>
+    <button class="btn" data-p="ice">Ice</button>
+  </div>
+<script>
+"use strict";
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'high-performance' });
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;padding:40px">WebGL2 required</p>'; throw new Error(); }
+
+let W, H;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const presets = {
+  symphony: { c1: [0.8, 0.2, 0.9], c2: [0.2, 0.6, 1.0], c3: [1.0, 0.4, 0.6], count: 5000, speed: 1.0, size: 1.0 },
+  bass:     { c1: [1.0, 0.1, 0.3], c2: [0.9, 0.4, 0.0], c3: [0.6, 0.0, 0.2], count: 8000, speed: 1.5, size: 1.3 },
+  ethereal: { c1: [0.4, 0.7, 1.0], c2: [0.7, 0.4, 1.0], c3: [0.3, 0.9, 0.8], count: 3000, speed: 0.6, size: 1.5 },
+  fire:     { c1: [1.0, 0.3, 0.0], c2: [1.0, 0.6, 0.0], c3: [0.8, 0.1, 0.0], count: 6000, speed: 1.2, size: 0.8 },
+  ice:      { c1: [0.5, 0.8, 1.0], c2: [0.8, 0.95, 1.0], c3: [0.3, 0.6, 0.9], count: 4000, speed: 0.5, size: 1.2 },
+};
+
+let current = { ...presets.symphony };
+let target = presets.symphony;
+let mouseX = 0.5, mouseY = 0.5;
+
+// Audio
+let audioCtx, analyser, dataArray, freqData, micActive = false;
+let bassVal = 0, midVal = 0, highVal = 0, overallVal = 0;
+
+async function initMic() {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.8;
+    source.connect(analyser);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    micActive = true;
+    document.getElementById('mic-prompt').classList.add('hidden');
+  } catch (e) {
+    console.warn('Mic denied, using demo mode');
+    document.getElementById('mic-prompt').classList.add('hidden');
+  }
+}
+
+function getAudio() {
+  if (!micActive || !analyser) {
+    // Demo mode - simulate music
+    const t = performance.now() * 0.001;
+    bassVal = Math.sin(t * 2) * 0.3 + 0.3 + Math.sin(t * 0.7) * 0.2;
+    midVal = Math.sin(t * 3.5) * 0.3 + 0.3 + Math.sin(t * 1.3) * 0.15;
+    highVal = Math.sin(t * 5) * 0.25 + 0.25 + Math.sin(t * 2.1) * 0.1;
+    overallVal = (bassVal + midVal + highVal) / 3;
+    return;
+  }
+  analyser.getByteFrequencyData(freqData);
+  const binCount = freqData.length;
+  const bassEnd = Math.floor(binCount * 0.1);
+  const midEnd = Math.floor(binCount * 0.5);
+
+  let bassSum = 0, midSum = 0, highSum = 0;
+  for (let i = 0; i < bassEnd; i++) bassSum += freqData[i];
+  for (let i = bassEnd; i < midEnd; i++) midSum += freqData[i];
+  for (let i = midEnd; i < binCount; i++) highSum += freqData[i];
+
+  bassVal = (bassSum / bassEnd) / 255;
+  midVal = (midSum / (midEnd - bassEnd)) / 255;
+  highVal = (highSum / (binCount - midEnd)) / 255;
+  overallVal = (bassVal + midVal + highVal) / 3;
+}
+
+document.getElementById('mic-prompt').addEventListener('click', initMic);
+document.addEventListener('click', e => {
+  if (e.target.closest('#ui') || e.target.closest('#mic-prompt')) return;
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+  else document.exitFullscreen();
+});
+document.addEventListener('mousemove', e => { mouseX = e.clientX / W; mouseY = e.clientY / H; });
+document.querySelectorAll('.btn').forEach(b => {
+  b.addEventListener('click', e => {
+    e.stopPropagation();
+    document.querySelectorAll('.btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    target = presets[b.dataset.p];
+  });
+});
+
+// Particle system on CPU, render as GL_POINTS
+const MAX_PARTICLES = 10000;
+let particleCount = 5000;
+const posArr = new Float32Array(MAX_PARTICLES * 2);
+const velArr = new Float32Array(MAX_PARTICLES * 2);
+const colArr = new Float32Array(MAX_PARTICLES * 3);
+const lifeArr = new Float32Array(MAX_PARTICLES);
+const sizeArr = new Float32Array(MAX_PARTICLES);
+
+function initParticles() {
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    resetParticle(i);
+  }
+}
+
+function resetParticle(i) {
+  const angle = Math.random() * Math.PI * 2;
+  const speed = Math.random() * 0.5 + 0.1;
+  posArr[i * 2] = 0.5 + (Math.random() - 0.5) * 0.6;
+  posArr[i * 2 + 1] = 0.5 + (Math.random() - 0.5) * 0.6;
+  velArr[i * 2] = Math.cos(angle) * speed;
+  velArr[i * 2 + 1] = Math.sin(angle) * speed;
+  lifeArr[i] = Math.random();
+  sizeArr[i] = Math.random() * 3 + 1;
+  colArr[i * 3] = 0.5 + Math.random() * 0.5;
+  colArr[i * 3 + 1] = 0.3 + Math.random() * 0.3;
+  colArr[i * 3 + 2] = 0.8 + Math.random() * 0.2;
+}
+
+initParticles();
+
+const vs = `#version 300 es
+in vec2 a_pos;
+in vec3 a_color;
+in float a_size;
+out vec3 v_color;
+uniform vec2 u_resolution;
+void main() {
+  vec2 clip = a_pos * 2.0 - 1.0;
+  clip.y = -clip.y;
+  gl_Position = vec4(clip, 0.0, 1.0);
+  gl_PointSize = a_size;
+  v_color = a_color;
+}`;
+
+const fs = `#version 300 es
+precision highp float;
+in vec3 v_color;
+out vec4 fragColor;
+void main() {
+  vec2 pc = gl_PointCoord * 2.0 - 1.0;
+  float d = dot(pc, pc);
+  float alpha = smoothstep(1.0, 0.3, d);
+  vec3 c = v_color * (1.0 + (1.0 - d) * 0.5);
+  fragColor = vec4(c, alpha * 0.9);
+}`;
+
+function compile(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; }
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(vs, gl.VERTEX_SHADER));
+gl.attachShader(prog, compile(fs, gl.FRAGMENT_SHADER));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+
+const posBuf = gl.createBuffer();
+const colBuf = gl.createBuffer();
+const sizeBuf = gl.createBuffer();
+
+const aPos = gl.getAttribLocation(prog, 'a_pos');
+const aCol = gl.getAttribLocation(prog, 'a_color');
+const aSize = gl.getAttribLocation(prog, 'a_size');
+const uRes = gl.getUniformLocation(prog, 'u_resolution');
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpA(a, b, t) { return a.map((v, i) => lerp(v, b[i], t)); }
+
+const startTime = performance.now();
+let frames = 0, lastFT = startTime;
+const fpsEl = document.getElementById('fps');
+
+function render(now) {
+  requestAnimationFrame(render);
+  const dt = 0.016;
+  const t = (now - startTime) * 0.001;
+
+  getAudio();
+
+  // Smooth preset transition
+  const s = 0.03;
+  current.c1 = lerpA(current.c1, target.c1, s);
+  current.c2 = lerpA(current.c2, target.c2, s);
+  current.c3 = lerpA(current.c3, target.c3, s);
+  current.speed = lerp(current.speed, target.speed, s);
+  current.size = lerp(current.size, target.size, s);
+  const newCount = Math.round(lerp(particleCount, target.count, s));
+  particleCount = newCount;
+
+  // Update particles
+  for (let i = 0; i < particleCount; i++) {
+    lifeArr[i] -= dt * 0.3;
+    if (lifeArr[i] <= 0) {
+      resetParticle(i);
+      lifeArr[i] = 1.0;
+    }
+
+    const idx = i * 2;
+    // Audio reactive forces
+    const distX = posArr[idx] - 0.5;
+    const distY = posArr[idx + 1] - 0.5;
+    const dist = Math.sqrt(distX * distX + distY * distY);
+
+    // Bass = outward explosion
+    const bassForce = bassVal * 2.0 * current.speed;
+    velArr[idx] += distX * bassForce * dt;
+    velArr[idx + 1] += distY * bassForce * dt;
+
+    // Mids = circular motion
+    const midForce = midVal * 1.5 * current.speed;
+    velArr[idx] += -distY * midForce * dt;
+    velArr[idx + 1] += distX * midForce * dt;
+
+    // Highs = jitter
+    velArr[idx] += (Math.random() - 0.5) * highVal * 0.5 * current.speed;
+    velArr[idx + 1] += (Math.random() - 0.5) * highVal * 0.5 * current.speed;
+
+    // Mouse attraction
+    const mdx = mouseX - posArr[idx];
+    const mdy = mouseY - posArr[idx + 1];
+    velArr[idx] += mdx * 0.5 * dt;
+    velArr[idx + 1] += mdy * 0.5 * dt;
+
+    // Damping
+    velArr[idx] *= 0.98;
+    velArr[idx + 1] *= 0.98;
+
+    posArr[idx] += velArr[idx] * dt;
+    posArr[idx + 1] += velArr[idx + 1] * dt;
+
+    // Wrap
+    if (posArr[idx] < -0.1) posArr[idx] = 1.1;
+    if (posArr[idx] > 1.1) posArr[idx] = -0.1;
+    if (posArr[idx + 1] < -0.1) posArr[idx + 1] = 1.1;
+    if (posArr[idx + 1] > 1.1) posArr[idx + 1] = -0.1;
+
+    // Color based on audio
+    const ci = i / particleCount;
+    let c;
+    if (ci < 0.33) c = lerpA(current.c1, current.c2, ci * 3);
+    else if (ci < 0.66) c = lerpA(current.c2, current.c3, (ci - 0.33) * 3);
+    else c = lerpA(current.c3, current.c1, (ci - 0.66) * 3);
+
+    const audioBoost = 1.0 + overallVal * 0.5;
+    colArr[i * 3] = c[0] * audioBoost;
+    colArr[i * 3 + 1] = c[1] * audioBoost;
+    colArr[i * 3 + 2] = c[2] * audioBoost;
+
+    sizeArr[i] = (1.0 + bassVal * 3.0 + lifeArr[i] * 2.0) * current.size;
+  }
+
+  // Upload & draw
+  gl.useProgram(prog);
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, posArr.subarray(0, particleCount * 2), gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, colArr.subarray(0, particleCount * 3), gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(aCol);
+  gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, 0, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, sizeBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, sizeArr.subarray(0, particleCount), gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(aSize);
+  gl.vertexAttribPointer(aSize, 1, gl.FLOAT, false, 0, 0);
+
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.drawArrays(gl.POINTS, 0, particleCount);
+
+  frames++;
+  if (now - lastFT >= 1000) {
+    fpsEl.textContent = frames + ' FPS';
+    frames = 0;
+    lastFT = now;
+  }
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
