@@ -564,6 +564,7 @@ body.fullscreen .zoom-indicator { display: none; }
   position: fixed;
   inset: 0;
   z-index: 10000;
+  pointer-events: none;
 }
 
 .onboarding-overlay {
@@ -574,6 +575,7 @@ body.fullscreen .zoom-indicator { display: none; }
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: auto;
 }
 
 .onboarding-modal {
@@ -1151,6 +1153,7 @@ body.fullscreen .zoom-indicator { display: none; }
   position: fixed;
   inset: 0;
   z-index: 10000;
+  pointer-events: none;
 }
 
 .scanner-overlay {
@@ -1161,6 +1164,7 @@ body.fullscreen .zoom-indicator { display: none; }
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: auto;
 }
 
 .scanner-modal {
@@ -1285,6 +1289,7 @@ body.fullscreen .zoom-indicator { display: none; }
   position: fixed;
   inset: 0;
   z-index: 10000;
+  pointer-events: none;
 }
 
 .guide-overlay {
@@ -1295,6 +1300,7 @@ body.fullscreen .zoom-indicator { display: none; }
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: auto;
 }
 
 .guide-modal {
