@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Projection Loop</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; cursor: none; }
+    canvas { display: block; width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; }
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+"use strict";
+
+// ============================================
+// AUTO-PLAYING PROJECTION MAPPING LOOP
+// No clicks needed. Just loads and plays.
+// Cycles through: Aurora → Caustics → Particles → Stars → Abstract
+// ============================================
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'high-performance' });
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;font:40px sans-serif;text-align:center;margin-top:40vh">WebGL2 required — use Chrome</p>'; throw new Error(); }
+
+let W, H;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Auto-fullscreen on click (projector side)
+document.addEventListener('click', () => {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+});
+
+const VERT = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() { v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0, 1); }`;
+
+const FRAG = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform float u_time;
+uniform vec2 u_res;
+
+#define PI 3.14159265
+#define TAU 6.2831853
+
+// --- NOISE ---
+vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;}
+vec4 mod289(vec4 x){return x-floor(x*(1./289.))*289.;}
+vec4 perm(vec4 x){return mod289(((x*34.)+1.)*x);}
+
+float snoise(vec3 v){
+  const vec2 C=vec2(1./6.,1./3.);
+  const vec4 D=vec4(0.,.5,1.,2.);
+  vec3 i=floor(v+dot(v,C.yyy));
+  vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz);
+  vec3 l=1.-g;
+  vec3 i1=min(g.xyz,l.zxy);
+  vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx;
+  vec3 x2=x0-i2+C.yyy;
+  vec3 x3=x0-D.yyy;
+  i=mod289(i);
+  vec4 p=perm(perm(perm(i.z+vec4(0.,i1.z,i2.z,1.))+i.y+vec4(0.,i1.y,i2.y,1.))+i.x+vec4(0.,i1.x,i2.x,1.));
+  float n_=.142857142857;
+  vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.*floor(p*ns.z*ns.z);
+  vec4 x_=floor(j*ns.z);
+  vec4 y_=floor(j-7.*x_);
+  vec4 x=x_*ns.x+ns.yyyy;
+  vec4 y=y_*ns.x+ns.yyyy;
+  vec4 h=1.-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy);
+  vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.+1.;
+  vec4 s1=floor(b1)*2.+1.;
+  vec4 sh=-step(h,vec4(0.));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;
+  vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x);
+  vec3 p1=vec3(a0.zw,h.y);
+  vec3 p2=vec3(a1.xy,h.z);
+  vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=1.79284291400159-.85373472095314*vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);
+  m=m*m;
+  return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+
+float fbm(vec3 p, int oct) {
+  float v=0., a=.5, f=1.;
+  for(int i=0;i<8;i++){if(i>=oct)break;v+=a*snoise(p*f);a*=.5;f*=2.;}
+  return v;
+}
+
+// --- SCENE MIXING ---
+// 0 = Aurora, 1 = Caustics, 2 = Nebula, 3 = Fire, 4 = Ocean
+float sceneTime;
+
+vec3 aurora(vec2 uv) {
+  float t = sceneTime * 0.15;
+  vec3 col = vec3(0.01, 0.01, 0.03);
+  vec3 c1=vec3(0.0,0.8,0.4), c2=vec3(0.0,0.4,0.9), c3=vec3(0.2,0.0,0.9);
+
+  for(int i=0;i<5;i++){
+    float fi=float(i);
+    float ly=0.3+fi*0.08;
+    float lw=0.15+fi*0.02;
+    vec3 np=vec3(uv.x*2.+t*(0.3+fi*0.1),uv.y*1.5-t*0.05,fi*0.7+t*0.02);
+    float w=fbm(np+vec3(snoise(np*2.)*0.5),4);
+    float c=fbm(np*vec3(1.,2.,1.)+vec3(w*0.8),5);
+    float st=snoise(vec3(uv.x*8.+t*0.2,uv.y*2.,fi+t*0.1));
+    st=pow(abs(st),0.5);
+    float dy=uv.y-ly;
+    float band=exp(-dy*dy/(lw*lw));
+    float mask=band*c*st*0.5;
+    float cm=snoise(vec3(fi*0.5,t*0.05,0.))*0.5+0.5;
+    vec3 lc=cm<0.33?mix(c1,c2,cm*3.):cm<0.66?mix(c2,c3,(cm-0.33)*3.):mix(c3,c1,(cm-0.66)*3.);
+    col+=lc*mask;
+  }
+
+  // Stars
+  vec2 sc=floor(uv*300.);
+  float sh=fract(sin(dot(sc,vec2(12.9898,78.233)))*43758.5453);
+  float star=step(0.97,sh)*smoothstep(0.15,0.,length(fract(uv*300.)-0.5));
+  star*=sin(sceneTime*2.+sh*6.28)*0.3+0.7;
+  float am=clamp(length(col)*3.,0.,1.);
+  col+=vec3(star)*(1.-am*0.8);
+
+  return col;
+}
+
+vec3 caustics(vec2 uv) {
+  float t=sceneTime*0.3;
+  vec3 bg=vec3(0.,0.02,0.06);
+  vec3 cc=vec3(0.,0.3,0.6);
+  vec3 ac=vec3(0.,0.6,0.9);
+
+  float c1=0.;
+  vec3 p=vec3(uv*3.,t);
+  c1+=snoise(p)*.5;
+  c1+=snoise(p*2.+vec3(1.7,3.2,.5))*.25;
+  c1+=snoise(p*4.+vec3(5.1,2.8,1.3))*.125;
+  c1+=snoise(p*8.+vec3(3.4,6.1,4.7))*.0625;
+  c1=pow(abs(c1),1.5)*1.2;
+
+  float c2=0.;
+  vec3 p2=vec3(uv*3.9+t*0.8,t*0.8+1.5);
+  c2+=snoise(p2)*.5;
+  c2+=snoise(p2*2.+vec3(1.7,3.2,.5))*.25;
+  c2+=snoise(p2*4.+vec3(5.1,2.8,1.3))*.125;
+  c2=pow(abs(c2),1.5)*1.2;
+
+  vec3 col=bg+mix(cc,ac,c2*0.5)*c1;
+
+  // Light rays
+  for(int i=0;i<4;i++){
+    float fi=float(i);
+    float x=uv.x*2.-1.+fi*0.3;
+    float ray=exp(-x*x*(2.+fi*0.5))*exp(-uv.y*(1.5+fi*0.3));
+    ray*=snoise(vec3(uv.x*3.+fi,uv.y*2.,sceneTime*0.3+fi))*0.5+0.5;
+    col+=ac*ray*0.15;
+  }
+  return col;
+}
+
+vec3 nebula(vec2 uv) {
+  float t=sceneTime*0.08;
+  vec3 col=vec3(0.01,0.005,0.02);
+
+  for(int i=0;i<4;i++){
+    float fi=float(i);
+    vec3 p=vec3(uv*2.+vec2(fi*1.3,fi*0.7),t+fi*0.5);
+    float n=fbm(p+fbm(p+fbm(p,3),3),4);
+    float mask=smoothstep(-0.2,0.8,n);
+
+    vec3 c;
+    if(fi<1.)c=vec3(0.5,0.0,0.8);
+    else if(fi<2.)c=vec3(0.8,0.0,0.4);
+    else if(fi<3.)c=vec3(0.0,0.2,0.9);
+    else c=vec3(0.9,0.2,0.0);
+
+    col+=c*mask*0.4;
+  }
+
+  // Stars
+  vec2 sc=floor(uv*400.);
+  float sh=fract(sin(dot(sc,vec2(12.9898,78.233)))*43758.5453);
+  float star=step(0.98,sh)*smoothstep(0.1,0.,length(fract(uv*400.)-0.5));
+  star*=sin(sceneTime*1.5+sh*TAU)*0.4+0.6;
+  col+=vec3(star)*0.8;
+
+  return col;
+}
+
+vec3 fire(vec2 uv) {
+  float t=sceneTime*0.5;
+  vec3 col=vec3(0.02,0.005,0.);
+
+  for(int i=0;i<5;i++){
+    float fi=float(i);
+    vec2 p=uv*vec2(1.+fi*0.3,1.5-fi*0.15)+vec2(0.,-t*(0.3+fi*0.1));
+    float n=snoise(vec3(p*2.,fi+t*0.2));
+    n=abs(n);
+    n=pow(n,0.5+fi*0.3);
+
+    vec3 c=mix(vec3(0.8,0.1,0.),vec3(1.,0.8,0.1),n);
+    col+=c*n*0.25;
+  }
+
+  // Embers
+  for(int i=0;i<20;i++){
+    float fi=float(i);
+    float x=sin(fi*7.3+t*0.5)*0.5+0.5;
+    float y=fract(fi*0.17+t*(0.2+fract(fi*0.3)*0.3));
+    float d=length(uv-vec2(x,y));
+    float ember=smoothstep(0.01,0.,d)*smoothstep(0.,0.3,y);
+    col+=vec3(1.,0.6,0.1)*ember*2.;
+  }
+
+  return col;
+}
+
+vec3 ocean(vec2 uv) {
+  float t=sceneTime*0.2;
+  vec3 col=vec3(0.,0.02,0.06);
+
+  float c1=0.;
+  vec3 p=vec3(uv*3.,t);
+  c1+=snoise(p)*.5;
+  c1+=snoise(p*2.+vec3(1.7,3.2,.5))*.25;
+  c1+=snoise(p*4.+vec3(5.1,2.8,1.3))*.125;
+  c1=pow(abs(c1),1.5);
+
+  col+=vec3(0.,0.15,0.3)*c1;
+
+  // Bubbles
+  for(int i=0;i<15;i++){
+    float fi=float(i);
+    float x=sin(fi*4.7+t*0.3)*0.4+0.5;
+    float y=fract(fi*0.23+t*(0.1+fract(fi*0.5)*0.15));
+    float d=length(uv-vec2(x,y));
+    float bubble=smoothstep(0.008,0.,d)*smoothstep(0.5,0.8,y);
+    col+=vec3(0.3,0.6,0.9)*bubble*0.5;
+  }
+
+  return col;
+}
+
+void main() {
+  vec2 uv = v_uv;
+  float t = u_time;
+
+  // Cycle through scenes: each scene 10 seconds, 2 second crossfade
+  float cycleDuration = 10.0;
+  float fadeDuration = 2.0;
+  float totalCycle = cycleDuration + fadeDuration;
+  float sceneProgress = mod(t, totalCycle);
+
+  int scene = int(mod(t / totalCycle, 5.0));
+  int nextScene = int(mod(float(scene + 1), 5.0));
+
+  sceneTime = t;
+
+  vec3 c1, c2;
+  if(scene == 0) c1 = aurora(uv);
+  else if(scene == 1) c1 = caustics(uv);
+  else if(scene == 2) c1 = nebula(uv);
+  else if(scene == 3) c1 = fire(uv);
+  else c1 = ocean(uv);
+
+  if(nextScene == 0) c2 = aurora(uv);
+  else if(nextScene == 1) c2 = caustics(uv);
+  else if(nextScene == 2) c2 = nebula(uv);
+  else if(nextScene == 3) c2 = fire(uv);
+  else c2 = ocean(uv);
+
+  // Crossfade
+  float fade = smoothstep(cycleDuration, totalCycle, sceneProgress);
+  vec3 color = mix(c1, c2, fade);
+
+  // Vignette
+  float vig = 1. - dot(uv - 0.5, uv - 0.5) * 0.5;
+  color *= vig;
+
+  // Tone map
+  color = color / (color + vec3(1.));
+  color = pow(color, vec3(1./2.2));
+
+  fragColor = vec4(color, 1.);
+}`;
+
+function compile(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; }
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(VERT, gl.VERTEX_SHADER));
+gl.attachShader(prog, compile(FRAG, gl.FRAGMENT_SHADER));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, 'a_pos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+const uTime = gl.getUniformLocation(prog, 'u_time');
+const uRes = gl.getUniformLocation(prog, 'u_res');
+
+const start = performance.now();
+
+function render(now) {
+  requestAnimationFrame(render);
+  const t = (now - start) * 0.001;
+  gl.uniform1f(uTime, t);
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
