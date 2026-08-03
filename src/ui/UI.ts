@@ -96,6 +96,31 @@ export class UI {
     this.viewport.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     this.viewport.addEventListener('dblclick', (e) => this.onDoubleClick(e));
 
+    // Touch events (for projector touch screens)
+    this.viewport.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const me = new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY, bubbles: true });
+        this.viewport.dispatchEvent(me);
+      }
+      e.preventDefault();
+    }, { passive: false });
+    
+    this.viewport.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const me = new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY, bubbles: true });
+        document.dispatchEvent(me);
+      }
+      e.preventDefault();
+    }, { passive: false });
+    
+    this.viewport.addEventListener('touchend', (e) => {
+      const me = new MouseEvent('mouseup', { bubbles: true });
+      document.dispatchEvent(me);
+      e.preventDefault();
+    }, { passive: false });
+
     // Keyboard
     document.addEventListener('keydown', (e) => this.onKeyDown(e));
 
