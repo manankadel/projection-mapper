@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Projection Mapper — Production</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Top Bar -->
+    <header id="topbar">
+      <div class="topbar-left">
+        <h1 class="logo">PROJ<span class="accent">MAP</span></h1>
+        <div class="separator"></div>
+        <div class="toolbar-group">
+          <button class="tool-btn active" data-tool="select" onclick="ui.setTool('select')" title="Select (1)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1l10 6.5L8 9l-2 5L3 1z"/></svg>
+          </button>
+          <button class="tool-btn" data-tool="warp" onclick="ui.setTool('warp')" title="Warp (2)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M2 8h12M8 2v12M2 2l12 12M14 2L2 14"/></svg>
+          </button>
+          <button class="tool-btn" data-tool="pan" onclick="ui.setTool('pan')" title="Pan (3)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1v14M1 8h14M8 1l-2 2M8 1l2 2M8 15l-2-2M8 15l2-2M1 8l2-2M1 8l2 2M15 8l-2-2M15 8l-2 2"/></svg>
+          </button>
+        </div>
+        <div class="separator"></div>
+        <div class="toolbar-group">
+          <button class="btn" onclick="ui.addSurface()">+ Surface</button>
+          <button class="btn" onclick="ui.duplicateSelectedSurface()">Duplicate</button>
+          <button class="btn" onclick="ui.resetWarp()">Reset Warp</button>
+        </div>
+        <div class="separator"></div>
+        <div class="toolbar-group">
+          <button class="btn" id="btnGrid" onclick="ui.toggleGrid()">Grid</button>
+          <button class="btn" id="btnSnap" onclick="ui.toggleSnap()">Snap</button>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <div class="toolbar-group">
+          <button class="btn" onclick="document.getElementById('mediaFileInput').click()">Load Media</button>
+          <button class="btn" onclick="ui.loadURL()">URL</button>
+          <div class="dropdown">
+            <button class="btn">Test Patterns ▾</button>
+            <div class="dropdown-menu">
+              <button onclick="ui.setTestPattern('checker')">Checker</button>
+              <button onclick="ui.setTestPattern('colorbars')">Color Bars</button>
+              <button onclick="ui.setTestPattern('grid')">Grid</button>
+              <button onclick="ui.setTestPattern('gradient')">Gradient</button>
+              <button onclick="ui.setTestPattern('brightness')">Brightness Ramp</button>
+            </div>
+          </div>
+        </div>
+        <div class="separator"></div>
+        <div class="toolbar-group">
+          <button class="btn" onclick="ui.exportShow()">Export Show</button>
+          <button class="btn" onclick="document.getElementById('showFileInput').click()">Import Show</button>
+          <button class="btn" onclick="ui.saveShow()">Save</button>
+        </div>
+        <div class="separator"></div>
+        <button class="btn accent" onclick="ui.toggleFullscreen()">PROJECTION [F]</button>
+      </div>
+    </header>
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <!-- Surfaces Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>Surfaces</span>
+          <button class="btn-sm" onclick="ui.addSurface()">+</button>
+        </div>
+        <div class="panel-body" id="surfaceList"></div>
+      </div>
+
+      <!-- Content Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>Content</span>
+          <button class="btn-sm" onclick="document.getElementById('mediaFileInput').click()">+</button>
+        </div>
+        <div class="panel-body" id="contentList"></div>
+      </div>
+
+      <!-- Surface Properties -->
+      <div class="panel" id="surfaceProps">
+        <div class="panel-header">Surface Properties</div>
+        <div class="panel-body">
+          <div class="field">
+            <label>Opacity <span class="value" id="surfOpacityVal">100%</span></label>
+            <input type="range" id="surfOpacity" min="0" max="100" value="100"
+              oninput="ui.updateSurfaceProp('opacity', this.value/100)">
+          </div>
+          <div class="field">
+            <label>Brightness <span class="value" id="surfBrightnessVal">100%</span></label>
+            <input type="range" id="surfBrightness" min="0" max="200" value="100"
+              oninput="ui.updateSurfaceProp('brightness', this.value/100)">
+          </div>
+          <div class="field">
+            <label>Contrast <span class="value" id="surfContrastVal">100%</span></label>
+            <input type="range" id="surfContrast" min="0" max="200" value="100"
+              oninput="ui.updateSurfaceProp('contrast', this.value/100)">
+          </div>
+          <div class="field">
+            <label>Saturation <span class="value" id="surfSaturationVal">100%</span></label>
+            <input type="range" id="surfSaturation" min="0" max="200" value="100"
+              oninput="ui.updateSurfaceProp('saturation', this.value/100)">
+          </div>
+          <div class="field">
+            <label>Hue <span class="value" id="surfHueVal">0°</span></label>
+            <input type="range" id="surfHue" min="0" max="360" value="0"
+              oninput="ui.updateSurfaceProp('hue', +this.value)">
+          </div>
+          <div class="field">
+            <label>Gamma <span class="value" id="surfGammaVal">2.2</span></label>
+            <input type="range" id="surfGamma" min="1" max="4" step="0.1" value="2.2"
+              oninput="ui.updateSurfaceProp('gamma', +this.value)">
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Flip H</label>
+              <input type="checkbox" id="surfFlipH" onchange="ui.updateSurfaceProp('flipH', this.checked)">
+            </div>
+            <div class="field">
+              <label>Flip V</label>
+              <input type="checkbox" id="surfFlipV" onchange="ui.updateSurfaceProp('flipV', this.checked)">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mesh Settings -->
+      <div class="panel">
+        <div class="panel-header">Mesh</div>
+        <div class="panel-body">
+          <div class="field">
+            <label>Columns <span class="value" id="meshColsVal">4</span></label>
+            <input type="range" id="meshCols" min="2" max="16" value="4"
+              oninput="ui.updateMeshCols(+this.value)">
+          </div>
+          <div class="field">
+            <label>Rows <span class="value" id="meshRowsVal">4</span></label>
+            <input type="range" id="meshRows" min="2" max="16" value="4"
+              oninput="ui.updateMeshRows(+this.value)">
+          </div>
+        </div>
+      </div>
+
+      <!-- Edge Blending -->
+      <div class="panel">
+        <div class="panel-header">Edge Blending</div>
+        <div class="panel-body">
+          <div class="field">
+            <label>Enable</label>
+            <input type="checkbox" id="edgeBlendEnabled" onchange="ui.updateEdgeBlend('enabled', this.checked)">
+          </div>
+          <div class="field">
+            <label>Side</label>
+            <select id="edgeBlendSide" onchange="ui.updateEdgeBlend('side', this.value)">
+              <option value="none">None</option>
+              <option value="left">Left</option>
+              <option value="right">Right</option>
+              <option value="top">Top</option>
+              <option value="bottom">Bottom</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Width <span class="value" id="edgeBlendWidthVal">15%</span></label>
+            <input type="range" id="edgeBlendWidth" min="0" max="100" value="15"
+              oninput="ui.updateEdgeBlend('width', this.value/100)">
+          </div>
+          <div class="field">
+            <label>Gamma <span class="value" id="edgeBlendGammaVal">2.2</span></label>
+            <input type="range" id="edgeBlendGamma" min="1" max="4" step="0.1" value="2.2"
+              oninput="ui.updateEdgeBlend('gamma', +this.value)">
+          </div>
+        </div>
+      </div>
+
+      <!-- Shortcuts -->
+      <div class="panel">
+        <div class="panel-header">Shortcuts</div>
+        <div class="panel-body shortcuts">
+          <div><kbd>F</kbd> Fullscreen</div>
+          <div><kbd>E</kbd> Edit mode</div>
+          <div><kbd>G</kbd> Grid</div>
+          <div><kbd>S</kbd> Snap</div>
+          <div><kbd>R</kbd> Reset warp</div>
+          <div><kbd>1-3</kbd> Tools</div>
+          <div><kbd>Tab</kbd> Next surface</div>
+          <div><kbd>Ctrl+Z</kbd> Undo</div>
+          <div><kbd>Ctrl+S</kbd> Export</div>
+          <div><kbd>Esc</kbd> Exit fullscreen</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Viewport -->
+    <main id="viewport">
+      <canvas id="gl-canvas"></canvas>
+      <div id="control-overlay"></div>
+      <div id="editBadge" class="badge" style="display:none">EDIT MODE</div>
+      <div id="zoomIndicator" class="zoom-indicator">100%</div>
+    </main>
+
+    <!-- Status Bar -->
+    <footer id="statusbar">
+      <div class="status-item"><span class="status-dot"></span> Ready</div>
+      <div class="status-item" id="statusSurfaces">Surfaces: 1</div>
+      <div class="status-item" id="statusFPS">FPS: 60</div>
+      <div class="status-item" id="statusZoom">Zoom: 100%</div>
+      <div style="flex:1"></div>
+      <div class="status-item">Projection Mapper v2.0</div>
+    </footer>
+  </div>
+
+  <!-- Hidden inputs -->
+  <input type="file" id="mediaFileInput" accept="image/*,video/*" multiple style="display:none">
+  <input type="file" id="showFileInput" accept=".json" style="display:none">
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
