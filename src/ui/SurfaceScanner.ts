@@ -18,7 +18,6 @@ export class SurfaceScanner {
     this.onComplete = onComplete;
     this.container = document.createElement('div');
     this.container.id = 'surface-scanner';
-    document.body.appendChild(this.container);
 
     this.video = document.createElement('video');
     this.video.setAttribute('playsinline', '');
@@ -29,6 +28,9 @@ export class SurfaceScanner {
   }
 
   async open() {
+    if (!document.body.contains(this.container)) {
+      document.body.appendChild(this.container);
+    }
     this.renderUI();
     await this.startCamera();
   }

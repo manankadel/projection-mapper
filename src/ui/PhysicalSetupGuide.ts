@@ -29,10 +29,12 @@ export class PhysicalSetupGuide {
   constructor() {
     this.container = document.createElement('div');
     this.container.id = 'setup-guide';
-    document.body.appendChild(this.container);
   }
 
   open() {
+    if (!document.body.contains(this.container)) {
+      document.body.appendChild(this.container);
+    }
     this.renderMainView();
   }
 
