@@ -147,18 +147,27 @@ export class Renderer {
   private ub: Record<string, WebGLUniformLocation> = {};
 
   constructor(canvas: HTMLCanvasElement) {
+    console.log('[Renderer] Constructor started');
     this.canvas = canvas;
+    console.log('[Renderer] Canvas:', canvas);
     const gl = canvas.getContext('webgl2', {
       alpha: true,
       premultipliedAlpha: false,
       antialias: false,
       preserveDrawingBuffer: false,
     });
-    if (!gl) throw new Error('WebGL2 not supported');
+    console.log('[Renderer] WebGL2 context:', gl);
+    if (!gl) {
+      console.error('[Renderer] WebGL2 not supported!');
+      throw new Error('WebGL2 not supported');
+    }
     this.gl = gl;
+    console.log('[Renderer] WebGL2 initialized');
 
     this.mainProgram = this.createProgram(VERT_SRC, FRAG_SRC);
+    console.log('[Renderer] Main program created');
     this.blendProgram = this.createProgram(VERT_SRC, BLEND_FRAG_SRC);
+    console.log('[Renderer] Blend program created');
 
     // Cache uniform locations
     ['u_opacity', 'u_brightness', 'u_contrast', 'u_saturation', 'u_hue', 'u_gamma',
@@ -180,6 +189,7 @@ export class Renderer {
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    console.log('[Renderer] Constructor complete');
   }
 
   private createShader(type: number, source: string): WebGLShader {

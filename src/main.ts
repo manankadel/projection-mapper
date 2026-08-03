@@ -6,18 +6,22 @@ import { ContentTemplateEngine } from './ui/ContentTemplates';
 import { PhysicalSetupGuide } from './ui/PhysicalSetupGuide';
 import './style.css';
 
+console.log('[Main] Script started');
+
 const canvas = document.getElementById('gl-canvas') as HTMLCanvasElement;
+console.log('[Main] Canvas:', canvas);
 if (!canvas) {
   document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0a0a;color:#ff3366;font-family:system-ui;font-size:20px">Canvas not found — check HTML</div>';
   throw new Error('Canvas not found');
 }
 
 try {
+  console.log('[Main] Creating UI...');
   // @ts-ignore
   window.ui = new UI(canvas);
-  console.log('UI initialized');
+  console.log('[Main] UI created successfully');
 } catch (e: any) {
-  console.error('UI init failed:', e);
+  console.error('[Main] UI init failed:', e);
   document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0a0a;color:#ff3366;font-family:system-ui;padding:40px;text-align:center"><div><h1 style="font-size:24px;margin-bottom:12px">Projection Mapper</h1><p style="color:#888;font-size:14px;margin-bottom:16px">${e.message}</p><p style="color:#555;font-size:12px">Open DevTools (Cmd+Option+I) → Console</p></div></div>`;
   throw e;
 }
@@ -25,7 +29,8 @@ try {
 try {
   // @ts-ignore
   window.chatbot = new Chatbot();
-} catch (e) { console.warn('Chatbot:', e); }
+  console.log('[Main] Chatbot created');
+} catch (e) { console.warn('[Main] Chatbot:', e); }
 
 try {
   const templateEngine = new ContentTemplateEngine();
@@ -44,7 +49,8 @@ try {
     }
     templateMenu.innerHTML = html;
   }
-} catch (e) { console.warn('Templates:', e); }
+  console.log('[Main] Template engine created');
+} catch (e) { console.warn('[Main] Templates:', e); }
 
 try {
   // @ts-ignore
@@ -54,12 +60,14 @@ try {
       window.ui.addScannedSurface(s.points, s.color);
     });
   });
-} catch (e) { console.warn('Scanner:', e); }
+  console.log('[Main] Surface scanner created');
+} catch (e) { console.warn('[Main] Scanner:', e); }
 
 try {
   // @ts-ignore
   window.setupGuide = new PhysicalSetupGuide();
-} catch (e) { console.warn('Setup guide:', e); }
+  console.log('[Main] Setup guide created');
+} catch (e) { console.warn('[Main] Setup guide:', e); }
 
 try {
   if (!Onboarding.hasCompleted()) {
@@ -78,7 +86,8 @@ try {
     // @ts-ignore
     window.ui.setTestPattern(e.detail.type);
   }) as EventListener);
-} catch (e) { console.warn('Onboarding:', e); }
+  console.log('[Main] Onboarding created');
+} catch (e) { console.warn('[Main] Onboarding:', e); }
 
 document.getElementById('showFileInput')?.addEventListener('change', (e) => {
   const input = e.target as HTMLInputElement;
@@ -99,3 +108,5 @@ window.addEventListener('beforeunload', (e) => {
   e.preventDefault();
   e.returnValue = '';
 });
+
+console.log('[Main] Initialization complete');

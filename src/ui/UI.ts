@@ -41,23 +41,38 @@ export class UI {
   private viewport: HTMLElement;
 
   constructor(canvas: HTMLCanvasElement) {
+    console.log('[UI] Constructor started');
     this.renderer = new Renderer(canvas);
+    console.log('[UI] Renderer created');
     this.contentManager = new ContentManager();
+    console.log('[UI] ContentManager created');
     this.showManager = new ShowManager(this.contentManager);
+    console.log('[UI] ShowManager created');
     this.midiController = new MIDIController();
+    console.log('[UI] MIDIController created');
     this.oscController = new OSCController();
+    console.log('[UI] OSCController created');
 
     this.viewport = document.getElementById('viewport')!;
     this.overlay = document.getElementById('control-overlay')!;
+    console.log('[UI] Elements found:', { viewport: !!this.viewport, overlay: !!this.overlay });
 
     this.setupEventListeners();
+    console.log('[UI] Event listeners attached');
     this.setupMIDI();
+    console.log('[UI] MIDI setup done');
     this.setupOSC();
+    console.log('[UI] OSC setup done');
     this.addDefaultSurface();
+    console.log('[UI] Default surface added');
     this.renderSurfaceList();
+    console.log('[UI] Surface list rendered');
     this.renderContentList();
+    console.log('[UI] Content list rendered');
     this.startRenderLoop();
+    console.log('[UI] Render loop started');
     this.saveUndo();
+    console.log('[UI] Constructor complete');
   }
 
   private addDefaultSurface() {
