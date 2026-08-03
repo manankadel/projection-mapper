@@ -1,6 +1,9 @@
 import { UI } from './ui/UI';
 import { Onboarding } from './ui/Onboarding';
 import { Chatbot } from './ui/Chatbot';
+import { SurfaceScanner } from './ui/SurfaceScanner';
+import { ContentTemplateEngine } from './ui/ContentTemplates';
+import { PhysicalSetupGuide } from './ui/PhysicalSetupGuide';
 import './style.css';
 
 const canvas = document.getElementById('gl-canvas') as HTMLCanvasElement;
@@ -13,6 +16,42 @@ window.ui = new UI(canvas);
 // @ts-ignore
 window.chatbot = new Chatbot();
 
+// Initialize content template engine
+const templateEngine = new ContentTemplateEngine();
+// @ts-ignore
+window.templateEngine = templateEngine;
+
+// Populate template menu
+const templateMenu = document.getElementById('templateMenu');
+if (templateMenu) {
+  const templates = templateEngine.getTemplates();
+  const categories = templateEngine.getCategories();
+  let html = '';
+  for (const cat of categories) {
+    html += `<div class="dropdown-header">${cat}</div>`;
+    for (const t of templates.filter(t => t.category === cat)) {
+      html += `<button onclick="ui.applyTemplate('${t.id}')">${t.icon} ${t.name}</button>`;
+    }
+  }
+  templateMenu.innerHTML = html;
+}
+
+// Initialize surface scanner
+// @ts-ignore
+window.surfaceScanner = new SurfaceScanner((surfaces) => {
+  // When surfaces are scanned, create them in the app
+  // @ts-ignore
+  surfaces.forEach(s => {
+    // Convert scanned points to surface coordinates
+    // @ts-ignore
+    window.ui.addScannedSurface(s.points, s.color);
+  });
+});
+
+// Initialize physical setup guide
+// @ts-ignore
+window.setupGuide = new PhysicalSetupGuide();
+
 // Show onboarding if first time
 if (!Onboarding.hasCompleted()) {
   // @ts-ignore
@@ -20,14 +59,8 @@ if (!Onboarding.hasCompleted()) {
     const answers = Onboarding.getSavedAnswers();
     // @ts-ignore
     window.chatbot.setContext(answers);
-    // @ts-ignore
-    if (answers.resolution) {
-      // @ts-ignore
-      window.showManager?.setOutputResolution(answers.resolution.w, answers.resolution.h);
-    }
   });
 } else {
-  // Load saved preferences
   const answers = Onboarding.getSavedAnswers();
   // @ts-ignore
   window.chatbot.setContext(answers);

@@ -9,7 +9,7 @@ import {
   findNearestPoint, updateMeshResolution,
   duplicateSurface, findNearestEdge,
 } from '../core/Surface';
-import { debounce } from '../utils/math';
+import { debounce, uid } from '../utils/math';
 
 export class UI {
   private renderer: Renderer;
@@ -833,6 +833,106 @@ export class UI {
     const canvas = this.renderer.canvas;
     canvas.style.transform = `translate(${this.state.pan.x}px, ${this.state.pan.y}px) scale(${this.state.zoom})`;
     canvas.style.transformOrigin = '0 0';
+  }
+
+  // ============================================================
+  // CONTENT TEMPLATES
+  // ============================================================
+  applyTemplate(templateId: string) {
+    const surf = this.surfaces[this.state.selectedSurface ?? 0];
+    if (!surf) return;
+
+    // Create a canvas-based content for this template
+    const templateCanvas = document.createElement('canvas');
+    templateCanvas.width = 1024;
+    templateCanvas.height = 1024;
+
+    // @ts-ignore
+    const engine = window.templateEngine;
+    if (engine) {
+      engine.startRendering(templateId, templateCanvas);
+
+      // Store as a special content type
+      const contentId = `template-${templateId}-${Date.now()}`;
+      surf.contentId = contentId;
+
+      // @ts-ignore
+      this.templateCanvases = this.templateCanvases || new Map();
+      // @ts-ignore
+      this.templateCanvases.set(contentId, { canvas: templateCanvas, engine, templateId });
+
+      this.renderContentList();
+    }
+  }
+
+  // ============================================================
+  // SCANNED SURFACES
+  // ============================================================
+  addScannedSurface(points: { x: number; y: number }[], color: string) {
+    const vp = this.viewport;
+    const vpW = vp.clientWidth;
+    const vpH = vp.clientHeight;
+
+    // Scale scanned points to viewport
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of points) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+
+    const scanW = maxX - minX;
+    const scanH = maxY - minY;
+    const scale = Math.min(vpW / scanW, vpH / scanH) * 0.6;
+    const offsetX = (vpW - scanW * scale) / 2;
+    const offsetY = (vpH - scanH * scale) / 2;
+
+    const meshPoints: { pos: Vec2; handleIn: Vec2; handleOut: Vec2 }[] = [];
+    const cols = 4;
+    const rows = 4;
+    for (let r = 0; r <= rows; r++) {
+      for (let c = 0; c <= cols; c++) {
+        const u = c / cols;
+        const v = r / rows;
+
+        const px = offsetX + (minX + scanW * u - minX) * scale;
+        const py = offsetY + (minY + scanH * v - minY) * scale;
+
+        meshPoints.push({
+          pos: { x: px, y: py },
+          handleIn: { x: px - 20, y: py },
+          handleOut: { x: px + 20, y: py },
+        });
+      }
+    }
+
+    const surf: SurfaceData = {
+      id: uid(),
+      name: `Scanned ${this.surfaces.length + 1}`,
+      color,
+      mesh: { cols, rows, points: meshPoints },
+      opacity: 1,
+      brightness: 1,
+      contrast: 1,
+      saturation: 1,
+      hue: 0,
+      gamma: 2.2,
+      flipH: false,
+      flipV: false,
+      blendMode: 'normal',
+      edgeBlend: { enabled: false, side: 'none', width: 0.15, gamma: 2.2, blackLevel: 0, whiteLevel: 1 },
+      visible: true,
+      locked: false,
+      groupId: null,
+      contentId: null,
+    };
+
+    this.surfaces.push(surf);
+    this.state.selectedSurface = this.surfaces.length - 1;
+    this.saveUndo();
+    this.renderSurfaceList();
+    this.renderControlOverlay();
   }
 
   // ============================================================

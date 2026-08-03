@@ -41,9 +41,10 @@
         <div class="toolbar-group">
           <button class="btn" onclick="document.getElementById('mediaFileInput').click()">Load Media</button>
           <button class="btn" onclick="ui.loadURL()">URL</button>
+          <button class="btn btn-accent" onclick="surfaceScanner.open()">📷 Scan Surface</button>
           <div class="dropdown">
-            <button class="btn">Test Patterns ▾</button>
-            <div class="dropdown-menu">
+            <button class="btn">✨ Templates ▾</button>
+            <div class="dropdown-menu" id="templateMenu">
               <button onclick="ui.setTestPattern('checker')">Checker</button>
               <button onclick="ui.setTestPattern('colorbars')">Color Bars</button>
               <button onclick="ui.setTestPattern('grid')">Grid</button>
@@ -51,6 +52,7 @@
               <button onclick="ui.setTestPattern('brightness')">Brightness Ramp</button>
             </div>
           </div>
+          <button class="btn" onclick="setupGuide.open()">📖 Setup Guide</button>
         </div>
         <div class="separator"></div>
         <div class="toolbar-group">
