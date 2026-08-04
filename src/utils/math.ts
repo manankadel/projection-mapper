@@ -142,7 +142,8 @@ export function createFlatMesh(
   return points;
 }
 
-// Tessellate mesh into triangles with bézier interpolation
+// Tessellate mesh into triangles with bicubic Bézier interpolation
+// The handles define cubic Bézier curves along each edge, giving smooth warps
 export function tessellateBezierMesh(
   points: ControlPoint[],
   cols: number,
@@ -154,7 +155,6 @@ export function tessellateBezierMesh(
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      // Get the 4 corner control points for this cell
       const i00 = r * (cols + 1) + c;
       const i10 = i00 + 1;
       const i01 = i00 + (cols + 1);
@@ -170,7 +170,6 @@ export function tessellateBezierMesh(
       const h01 = points[i01].handleOut;
       const h11 = points[i11].handleIn;
 
-      // Tessellate this cell
       for (let sy = 0; sy < segments; sy++) {
         for (let sx = 0; sx < segments; sx++) {
           const u0 = sx / segments;
@@ -178,17 +177,14 @@ export function tessellateBezierMesh(
           const v0 = sy / segments;
           const v1 = (sy + 1) / segments;
 
-          // Evaluate bézier surface at each corner
-          const q00 = evalBilinearBezier(u0, v0, p00, p10, p01, p11, h00, h10, h01, h11);
-          const q10 = evalBilinearBezier(u1, v0, p00, p10, p01, p11, h00, h10, h01, h11);
-          const q01 = evalBilinearBezier(u0, v1, p00, p10, p01, p11, h00, h10, h01, h11);
-          const q11 = evalBilinearBezier(u1, v1, p00, p10, p01, p11, h00, h10, h01, h11);
+          const q00 = evalBicubicPatch(u0, v0, p00, p10, p01, p11, h00, h10, h01, h11);
+          const q10 = evalBicubicPatch(u1, v0, p00, p10, p01, p11, h00, h10, h01, h11);
+          const q01 = evalBicubicPatch(u0, v1, p00, p10, p01, p11, h00, h10, h01, h11);
+          const q11 = evalBicubicPatch(u1, v1, p00, p10, p01, p11, h00, h10, h01, h11);
 
-          // Triangle 1
           positions.push(q00.x, q00.y, q10.x, q10.y, q01.x, q01.y);
           texCoords.push(u0, v0, u1, v0, u0, v1);
 
-          // Triangle 2
           positions.push(q10.x, q10.y, q11.x, q11.y, q01.x, q01.y);
           texCoords.push(u1, v0, u1, v1, u0, v1);
         }
@@ -202,16 +198,24 @@ export function tessellateBezierMesh(
   };
 }
 
-function evalBilinearBezier(
+// Cubic Bézier edge interpolation, then linear blend between edges (Y direction)
+// This uses the handles for smooth X-direction warping while maintaining grid-like Y interpolation
+function evalBicubicPatch(
   u: number, v: number,
   p00: Vec2, p10: Vec2, p01: Vec2, p11: Vec2,
-  _h00: Vec2, _h10: Vec2, _h01: Vec2, _h11: Vec2,
+  h00: Vec2, h10: Vec2, h01: Vec2, h11: Vec2,
 ): Vec2 {
-  // Bilinear interpolation with bézier handles for smoothness
-  // For simplicity, we use bilinear interpolation of positions
-  // The handles are used for the warp editor UI
-  const x = (1 - u) * (1 - v) * p00.x + u * (1 - v) * p10.x + (1 - u) * v * p01.x + u * v * p11.x;
-  const y = (1 - u) * (1 - v) * p00.y + u * (1 - v) * p10.y + (1 - u) * v * p01.y + u * v * p11.y;
+  // Top edge: cubic Bézier from p00 to p10 using h00 (handleOut) and h10 (handleIn)
+  const tx0 = cubicBezier(u, p00.x, h00.x, h10.x, p10.x);
+  const ty0 = cubicBezier(u, p00.y, h00.y, h10.y, p10.y);
+
+  // Bottom edge: cubic Bézier from p01 to p11 using h01 (handleOut) and h11 (handleIn)
+  const tx1 = cubicBezier(u, p01.x, h01.x, h11.x, p11.x);
+  const ty1 = cubicBezier(u, p01.y, h01.y, h11.y, p11.y);
+
+  // Linear interpolation between top and bottom edges
+  const x = lerp(tx0, tx1, v);
+  const y = lerp(ty0, ty1, v);
   return { x, y };
 }
 

@@ -4,6 +4,7 @@ import { uid } from '../utils/math';
 export class ContentManager {
   items: Map<string, ContentItem> = new Map();
   playlists: Map<string, Playlist> = new Map();
+  canvasSources: Map<string, HTMLCanvasElement> = new Map();
   private activeWebcams: Map<string, MediaStream> = new Map();
 
   constructor() {
@@ -91,11 +92,26 @@ export class ContentManager {
     return item;
   }
 
-  removeItem(id: string) {
+  addCanvas(name: string, canvas: HTMLCanvasElement): ContentItem {
+    const item: ContentItem = {
+      id: uid(),
+      name,
+      type: 'canvas',
+      src: '',
+      loop: true,
+      volume: 0,
+    };
+    this.items.set(item.id, item);
+    this.canvasSources.set(item.id, canvas);
+    return item;
+  }
+
+   removeItem(id: string) {
     const item = this.items.get(id);
     if (item?.type === 'webcam') {
       this.stopWebcam(id);
     }
+    this.canvasSources.delete(id);
     this.items.delete(id);
   }
 

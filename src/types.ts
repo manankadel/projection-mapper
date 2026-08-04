@@ -61,7 +61,7 @@ export interface EdgeBlendConfig {
 export interface ContentItem {
   id: string;
   name: string;
-  type: 'image' | 'video' | 'color' | 'gradient' | 'pattern' | 'webcam' | 'ndi';
+  type: 'image' | 'video' | 'color' | 'gradient' | 'pattern' | 'webcam' | 'ndi' | 'canvas';
   src: string;
   thumb?: string;
   duration?: number;

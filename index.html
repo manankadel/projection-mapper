@@ -52,6 +52,10 @@
               <button onclick="ui.setTestPattern('brightness')">Brightness Ramp</button>
             </div>
           </div>
+          <div class="dropdown">
+            <button class="btn">🎮 Demos ▾</button>
+            <div class="dropdown-menu" id="demoMenu"></div>
+          </div>
           <button class="btn" onclick="setupGuide.open()">📖 Setup Guide</button>
         </div>
         <div class="separator"></div>
@@ -61,7 +65,8 @@
           <button class="btn" onclick="ui.saveShow()">Save</button>
         </div>
         <div class="separator"></div>
-        <button class="btn accent" onclick="ui.toggleFullscreen()">PROJECTION [F]</button>
+        <button class="btn btn-accent" onclick="ui.project()" title="Move to projector display and fullscreen">PROJECT ▶</button>
+        <button class="btn accent" onclick="ui.toggleFullscreen()">FULLSCREEN [F]</button>
       </div>
     </header>
 
@@ -185,12 +190,17 @@
         <div class="panel-header">Shortcuts</div>
         <div class="panel-body shortcuts">
           <div><kbd>F</kbd> Fullscreen</div>
+          <div><kbd>▶</kbd> Project (moves to projector)</div>
           <div><kbd>E</kbd> Edit mode</div>
           <div><kbd>G</kbd> Grid</div>
           <div><kbd>S</kbd> Snap</div>
           <div><kbd>R</kbd> Reset warp</div>
+          <div><kbd>←↑↓→</kbd> Nudge point</div>
+          <div><kbd>Shift+←↑↓→</kbd> Nudge ×10</div>
+          <div><kbd>Tab</kbd> Next point</div>
+          <div><kbd>[ ]</kbd> Next/prev surface</div>
+          <div><kbd>T</kbd> Test pattern</div>
           <div><kbd>1-3</kbd> Tools</div>
-          <div><kbd>Tab</kbd> Next surface</div>
           <div><kbd>Ctrl+Z</kbd> Undo</div>
           <div><kbd>Ctrl+S</kbd> Export</div>
           <div><kbd>Esc</kbd> Exit fullscreen</div>

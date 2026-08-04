@@ -132,6 +132,8 @@ export class Renderer {
   private vao: WebGLVertexArrayObject;
   private textures: Map<string, WebGLTexture> = new Map();
   private videoElements: Map<string, HTMLVideoElement> = new Map();
+  private canvasElements: Map<string, HTMLCanvasElement> = new Map();
+  private canvasContentItems: Map<string, ContentItem> = new Map();
   private patternCanvas: HTMLCanvasElement;
   private patternCtx: CanvasRenderingContext2D;
   private patternTexture: WebGLTexture | null = null;
@@ -250,6 +252,8 @@ export class Renderer {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
+    this.updateCanvasTextures();
+
     const w = this.canvas.width;
     const h = this.canvas.height;
 
@@ -332,6 +336,17 @@ export class Renderer {
   private getTexture(content: ContentItem): WebGLTexture | null {
     if (content.type === 'pattern') {
       return this.getPatternTexture(content.src);
+    }
+    if (content.type === 'canvas') {
+      const canvas = this.canvasElements.get(content.id);
+      if (!canvas) return null;
+      let tex = this.textures.get(content.id);
+      if (!tex) {
+        tex = this.createGLTexture(canvas);
+        this.textures.set(content.id, tex);
+      }
+      this.canvasContentItems.set(content.id, content);
+      return tex;
     }
     return this.textures.get(content.id) || null;
   }
@@ -458,8 +473,8 @@ export class Renderer {
       video.muted = true;
       video.playsInline = true;
       video.src = src;
-      video.play().catch(() => {});
       this.videoElements.set(id, video);
+      this.schedulePlay(video);
     }
     return video;
   }
@@ -475,9 +490,33 @@ export class Renderer {
         this.videoElements.set(id, video);
       }
       video.srcObject = stream;
-      video.play();
+      this.schedulePlay(video);
       return stream;
     });
+  }
+
+  private userGestureHandled = false;
+  private pendingPlayables: HTMLVideoElement[] = [];
+
+  private schedulePlay(video: HTMLVideoElement) {
+    if (this.userGestureHandled) {
+      video.play().catch(() => {});
+      return;
+    }
+    this.pendingPlayables.push(video);
+    if (this.pendingPlayables.length === 1) {
+      const onGesture = () => {
+        this.userGestureHandled = true;
+        for (const v of this.pendingPlayables) v.play().catch(() => {});
+        this.pendingPlayables = [];
+        document.removeEventListener('click', onGesture);
+        document.removeEventListener('keydown', onGesture);
+        document.removeEventListener('touchstart', onGesture);
+      };
+      document.addEventListener('click', onGesture, { once: true });
+      document.addEventListener('keydown', onGesture, { once: true });
+      document.addEventListener('touchstart', onGesture, { once: true });
+    }
   }
 
   stopWebcam(id: string) {
@@ -486,6 +525,29 @@ export class Renderer {
       const stream = video.srcObject as MediaStream;
       stream?.getTracks().forEach(t => t.stop());
       video.srcObject = null;
+    }
+  }
+
+  loadCanvas(id: string, canvas: HTMLCanvasElement): void {
+    this.canvasElements.set(id, canvas);
+    let tex = this.textures.get(id);
+    if (tex) this.gl.deleteTexture(tex);
+    tex = this.createGLTexture(canvas);
+    this.textures.set(id, tex);
+  }
+
+  private updateCanvasTextures() {
+    for (const [id, canvas] of this.canvasElements) {
+      const content = this.canvasContentItems.get(id);
+      if (!content) continue;
+      const tex = this.textures.get(id);
+      if (!tex) {
+        const newTex = this.createGLTexture(canvas);
+        this.textures.set(id, newTex);
+      } else {
+        this.gl.bindTexture(this.gl.TEXTURE_2D, tex);
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, canvas);
+      }
     }
   }
 

@@ -552,6 +552,8 @@ body.fullscreen #viewport {
 body.fullscreen #control-overlay { display: none; }
 body.fullscreen .badge { display: none !important; }
 body.fullscreen .zoom-indicator { display: none; }
+body.fullscreen { cursor: none; }
+body.fullscreen * { cursor: none !important; }
 
 /* ============ SCROLLBAR ============ */
 ::-webkit-scrollbar { width: 6px; }

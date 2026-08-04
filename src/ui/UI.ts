@@ -4,6 +4,8 @@ import { ContentManager } from '../core/ContentManager';
 import { ShowManager } from '../core/ShowManager';
 import { MIDIController } from '../core/MIDIController';
 import { OSCController } from '../core/OSCController';
+import type { ContentTemplateEngine } from './ContentTemplates';
+import type { DemoManager } from '../demos/DemoManager';
 import {
   createSurface, getSurfaceBounds, resetSurfaceWarp,
   findNearestPoint, updateMeshResolution,
@@ -12,11 +14,13 @@ import {
 import { debounce, uid } from '../utils/math';
 
 export class UI {
-  private renderer: Renderer;
-  private contentManager: ContentManager;
+  renderer: Renderer;
+  contentManager: ContentManager;
   private showManager: ShowManager;
   private midiController: MIDIController;
   private oscController: OSCController;
+  private templateEngine: ContentTemplateEngine | null = null;
+  demoManager: DemoManager | null = null;
 
   private surfaces: SurfaceData[] = [];
   private state: ViewState = {
@@ -34,6 +38,7 @@ export class UI {
   private isDragging = false;
   private dragStart: Vec2 = { x: 0, y: 0 };
   private dragPointStart: Vec2 = { x: 0, y: 0 };
+  private nudgeKeyActive = false;
   private undoStack: string[] = [];
   private maxUndo = 50;
   private animationFrame: number = 0;
@@ -123,6 +128,9 @@ export class UI {
 
     // Keyboard
     document.addEventListener('keydown', (e) => this.onKeyDown(e));
+    document.addEventListener('keyup', (e) => {
+      if (e.key.startsWith('Arrow')) this.nudgeKeyActive = false;
+    });
 
     // Window resize
     window.addEventListener('resize', debounce(() => this.renderControlOverlay(), 100));
@@ -364,9 +372,35 @@ export class UI {
       case '1': this.setTool('select'); break;
       case '2': this.setTool('warp'); break;
       case '3': this.setTool('pan'); break;
+      case 'arrowup':
+        e.preventDefault();
+        this.nudgeSelectedPoint(0, -(shift ? 10 : 1));
+        break;
+      case 'arrowdown':
+        e.preventDefault();
+        this.nudgeSelectedPoint(0, (shift ? 10 : 1));
+        break;
+      case 'arrowleft':
+        e.preventDefault();
+        this.nudgeSelectedPoint(-(shift ? 10 : 1), 0);
+        break;
+      case 'arrowright':
+        e.preventDefault();
+        this.nudgeSelectedPoint((shift ? 10 : 1), 0);
+        break;
       case 'tab':
         e.preventDefault();
-        this.selectNextSurface(shift ? -1 : 1);
+        this.selectNextPoint(shift ? -1 : 1);
+        break;
+      case '[':
+        this.selectNextSurface(-1);
+        break;
+      case ']':
+        this.selectNextSurface(1);
+        break;
+      case 't':
+        e.preventDefault();
+        this.cycleTestPattern();
         break;
       case '+':
       case '=':
@@ -399,9 +433,11 @@ export class UI {
     if (document.fullscreenElement) {
       document.exitFullscreen();
       document.body.classList.remove('fullscreen');
+      this.demoManager?.stopActiveDemo();
     } else {
       document.documentElement.requestFullscreen();
       document.body.classList.add('fullscreen');
+      this.demoManager?.startActiveDemo();
     }
   }
 
@@ -469,6 +505,65 @@ export class UI {
     this.renderSurfaceList();
     this.loadSurfaceProps();
     this.renderControlOverlay();
+  }
+
+  selectNextPoint(delta: number) {
+    const surf = this.surfaces[this.state.selectedSurface ?? 0];
+    if (!surf || surf.mesh.points.length === 0) return;
+    if (this.state.selectedPoint === null) {
+      this.state.selectedPoint = 0;
+    } else {
+      const n = surf.mesh.points.length;
+      this.state.selectedPoint = ((this.state.selectedPoint + delta) % n + n) % n;
+    }
+    this.renderControlOverlay();
+  }
+
+  nudgeSelectedPoint(dx: number, dy: number) {
+    const surf = this.surfaces[this.state.selectedSurface ?? 0];
+    if (!surf) return;
+    if (this.state.selectedPoint === null) this.state.selectedPoint = 0;
+    const p = surf.mesh.points[this.state.selectedPoint];
+    if (!p) return;
+    if (!this.nudgeKeyActive) {
+      this.saveUndo();
+      this.nudgeKeyActive = true;
+    }
+    p.pos.x += dx;
+    p.pos.y += dy;
+    this.renderControlOverlay();
+  }
+
+  cycleTestPattern() {
+    const surf = this.surfaces[this.state.selectedSurface ?? 0];
+    if (!surf) return;
+    const patterns = ['grid', 'checker', 'colorbars', 'gradient', 'brightness'];
+    const current = patterns.indexOf(surf.contentId || '');
+    surf.contentId = patterns[(current + 1) % patterns.length];
+    this.renderControlOverlay();
+  }
+
+  async project() {
+    try {
+      const nav = navigator as any;
+      if (nav.getScreenDetails) {
+        const details = await nav.getScreenDetails();
+        if (details.screens.length > 1) {
+          const savedLabel = localStorage.getItem('projmapper-projector-display');
+          const target =
+            details.screens.find((s: any) => s.label === savedLabel) ||
+            details.screens.find((s: any) => !s.isPrimary) ||
+            details.screens[0];
+          if (target) {
+            window.moveTo(target.left, target.top);
+            localStorage.setItem('projmapper-projector-display', target.label || '');
+          }
+        }
+      }
+    } catch (_e) {
+      // Screen Details API not available — fullscreen current display
+    }
+    this.toggleFullscreen();
   }
 
   resetWarp() {
@@ -642,6 +737,10 @@ export class UI {
     }
   }
 
+  setTemplateEngine(engine: ContentTemplateEngine) {
+    this.templateEngine = engine;
+  }
+
   assignContent(contentId: string) {
     const surf = this.surfaces[this.state.selectedSurface ?? 0];
     if (surf) {
@@ -654,6 +753,11 @@ export class UI {
     if (surf) {
       surf.contentId = null;
     }
+  }
+
+  assignDemo(demoId: string) {
+    if (!this.demoManager) return;
+    this.demoManager.assignToSurface(this, demoId);
   }
 
   // ============================================================
@@ -689,6 +793,15 @@ export class UI {
       this.renderSurfaceList();
       this.renderControlOverlay();
       this.renderContentList();
+      // Reload textures for restored content so it renders immediately
+      const items = this.contentManager.getAllItems();
+      for (const item of items) {
+        if (item.type === 'image') {
+          this.renderer.loadImage(item.id, item.src);
+        } else if (item.type === 'video') {
+          this.renderer.loadVideo(item.id, item.src);
+        }
+      }
     }
   }
 
@@ -787,6 +900,7 @@ export class UI {
       case 'gradient': return '🌈';
       case 'webcam': return '📷';
       case 'ndi': return '📡';
+      case 'canvas': return '🎨';
       default: return '📄';
     }
   }
@@ -882,24 +996,20 @@ export class UI {
     const surf = this.surfaces[this.state.selectedSurface ?? 0];
     if (!surf) return;
 
-    // Create a canvas-based content for this template
     const templateCanvas = document.createElement('canvas');
     templateCanvas.width = 1024;
     templateCanvas.height = 1024;
 
-    // @ts-ignore
-    const engine = window.templateEngine;
+    const engine = this.templateEngine;
     if (engine) {
       engine.startRendering(templateId, templateCanvas);
 
-      // Store as a special content type
-      const contentId = `template-${templateId}-${Date.now()}`;
-      surf.contentId = contentId;
-
-      // @ts-ignore
-      this.templateCanvases = this.templateCanvases || new Map();
-      // @ts-ignore
-      this.templateCanvases.set(contentId, { canvas: templateCanvas, engine, templateId });
+      const content = this.contentManager.addCanvas(
+        engine.getTemplate(templateId)?.name || templateId,
+        templateCanvas,
+      );
+      this.renderer.loadCanvas(content.id, templateCanvas);
+      surf.contentId = content.id;
 
       this.renderContentList();
     }

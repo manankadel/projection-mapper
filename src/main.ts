@@ -4,6 +4,7 @@ import { Chatbot } from './ui/Chatbot';
 import { SurfaceScanner } from './ui/SurfaceScanner';
 import { ContentTemplateEngine } from './ui/ContentTemplates';
 import { PhysicalSetupGuide } from './ui/PhysicalSetupGuide';
+import { DemoManager } from './demos/DemoManager';
 import './style.css';
 
 console.log('[Main] Script started');
@@ -16,10 +17,17 @@ if (!canvas) {
 }
 
 try {
-  console.log('[Main] Creating UI...');
   // @ts-ignore
   window.ui = new UI(canvas);
   console.log('[Main] UI created successfully');
+  // Auto-restore last show so the projector picks up where we left off
+  try {
+    // @ts-ignore
+    window.ui.loadShow();
+    console.log('[Main] Show restored from localStorage');
+  } catch (e) {
+    console.warn('[Main] Show restore:', e);
+  }
 } catch (e: any) {
   console.error('[Main] UI init failed:', e);
   document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0a0a;color:#ff3366;font-family:system-ui;padding:40px;text-align:center"><div><h1 style="font-size:24px;margin-bottom:12px">Projection Mapper</h1><p style="color:#888;font-size:14px;margin-bottom:16px">${e.message}</p><p style="color:#555;font-size:12px">Open DevTools (Cmd+Option+I) → Console</p></div></div>`;
@@ -36,6 +44,8 @@ try {
   const templateEngine = new ContentTemplateEngine();
   // @ts-ignore
   window.templateEngine = templateEngine;
+  // @ts-ignore
+  ui.setTemplateEngine(templateEngine);
   const templateMenu = document.getElementById('templateMenu');
   if (templateMenu) {
     const templates = templateEngine.getTemplates();
@@ -51,6 +61,33 @@ try {
   }
   console.log('[Main] Template engine created');
 } catch (e) { console.warn('[Main] Templates:', e); }
+
+try {
+  // @ts-ignore
+  window.demoManager = new DemoManager();
+  // @ts-ignore
+  ui.demoManager = window.demoManager;
+  // @ts-ignore
+  window.demoManager.registerDemos(ui.contentManager, ui.renderer);
+  const demoMenu = document.getElementById('demoMenu');
+  if (demoMenu) {
+    const demos = // @ts-ignore
+      window.demoManager.getDemos();
+    demoMenu.innerHTML = demos.map((d: any) =>
+      `<button onclick="ui.assignDemo('${d.id}')">${d.icon} ${d.name}</button>`
+    ).join('');
+  }
+  window.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) {
+      // @ts-ignore
+      window.demoManager?.stopActiveDemo();
+    } else {
+      // @ts-ignore
+      window.demoManager?.startActiveDemo();
+    }
+  });
+  console.log('[Main] Demo manager created');
+} catch (e) { console.warn('[Main] Demos:', e); }
 
 try {
   // @ts-ignore
