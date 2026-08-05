@@ -304,6 +304,9 @@ export class Renderer {
     const sideMap: Record<string, number> = { none: 0, left: 1, right: 2, top: 3, bottom: 4 };
     gl.uniform1f(this.u.u_edgeBlendSide, sideMap[eb.side] || 0);
 
+    // Hidden until content is assigned — empty surfaces must not project
+    if (!surf.contentId) return;
+
     // Bind texture or color
     let hasTex = false;
     if (surf.contentId) {
