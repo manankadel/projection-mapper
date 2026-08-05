@@ -476,12 +476,20 @@ export class UI {
     const vp = this.viewport;
     const w = vp.clientWidth;
     const h = vp.clientHeight;
-    const size = Math.min(w, h) * 0.4;
-    const surf = createSurface(
-      (w - size) / 2 + (this.surfaces.length * 30),
-      (h - size) / 2 + (this.surfaces.length * 30),
-      size, size, 4, 4, this.surfaces.length
-    );
+    const n = this.surfaces.length;
+
+    // Tile surfaces in a grid so new ones never overlap existing ones
+    const cols = Math.ceil(Math.sqrt(n + 1));
+    const rows = Math.ceil((n + 1) / cols);
+    const size = Math.min(w / cols, h / rows) * 0.8;
+    const cellW = w / cols;
+    const cellH = h / rows;
+    const col = n % cols;
+    const row = Math.floor(n / cols);
+    const x = col * cellW + (cellW - size) / 2;
+    const y = row * cellH + (cellH - size) / 2;
+
+    const surf = createSurface(x, y, size, size, 4, 4, n);
     this.surfaces.push(surf);
     this.state.selectedSurface = this.surfaces.length - 1;
     this.saveUndo();
