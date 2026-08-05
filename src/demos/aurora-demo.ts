@@ -1,4 +1,4 @@
-import type { DemoInstance, DemoMeta } from './types';
+import type { DemoInstance, DemoMeta, DemoProps } from './types';
 
 export const meta: DemoMeta = {
   id: 'aurora',
@@ -7,6 +7,8 @@ export const meta: DemoMeta = {
   icon: '🌌',
   category: 'ambient',
   renderer: 'webgl2',
+  useCases: [26, 1, 39, 50],
+  tags: ['aurora', 'ambient', 'ambient', 'music'],
 };
 
 const VERT = `#version 300 es
@@ -24,6 +26,9 @@ in vec2 v_uv;
 out vec4 fragColor;
 uniform float u_time;
 uniform vec2 u_resolution;
+uniform float u_bass;
+uniform float u_mids;
+uniform float u_treble;
 
 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
 vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -64,6 +69,7 @@ vec3 aurora(vec2 uv, float t) {
   
   float total = aurora1 + aurora2 + aurora3;
   total = max(total, 0.0) * (waves + 1.0) * 0.5;
+  total *= (1.0 + u_bass * 0.5);
   
   vec3 color = mix(
     vec3(0.1, 0.4, 0.6),
@@ -117,11 +123,17 @@ export function create(canvas: HTMLCanvasElement): DemoInstance {
 
   const uTime = gl.getUniformLocation(prog, 'u_time')!;
   const uRes = gl.getUniformLocation(prog, 'u_resolution')!;
+  const uBass = gl.getUniformLocation(prog, 'u_bass')!;
+  const uMids = gl.getUniformLocation(prog, 'u_mids')!;
+  const uTreble = gl.getUniformLocation(prog, 'u_treble')!;
 
   let raf: number;
   let startTime = 0;
   let width = canvas.width;
   let height = canvas.height;
+  let bass = 0;
+  let mids = 0;
+  let treble = 0;
 
   const render = (time: number) => {
     if (!startTime) startTime = time;
@@ -131,6 +143,9 @@ export function create(canvas: HTMLCanvasElement): DemoInstance {
     gl.useProgram(prog);
     gl.uniform1f(uTime, t);
     gl.uniform2f(uRes, width, height);
+    gl.uniform1f(uBass, bass);
+    gl.uniform1f(uMids, mids);
+    gl.uniform1f(uTreble, treble);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     raf = requestAnimationFrame(render);
@@ -151,6 +166,10 @@ export function create(canvas: HTMLCanvasElement): DemoInstance {
       canvas.height = h;
       gl.viewport(0, 0, w, h);
     },
-    setProps() {},
+    setProps(props: DemoProps) {
+      if (props.bass !== undefined) bass = props.bass;
+      if (props.mids !== undefined) mids = props.mids;
+      if (props.treble !== undefined) treble = props.treble;
+    },
   };
 }

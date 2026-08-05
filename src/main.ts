@@ -65,10 +65,12 @@ try {
 try {
   // @ts-ignore
   window.demoManager = new DemoManager();
-  // @ts-ignore
+   // @ts-ignore
   ui.demoManager = window.demoManager;
   // @ts-ignore
-  window.demoManager.registerDemos(ui.contentManager, ui.renderer);
+   window.demoManager.registerDemos(ui.contentManager, ui.renderer);
+   // @ts-ignore
+   ui.renderDemoList();
   const demoMenu = document.getElementById('demoMenu');
   if (demoMenu) {
     const demos = // @ts-ignore

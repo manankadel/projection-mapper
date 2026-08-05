@@ -1,12 +1,14 @@
-import type { DemoInstance, DemoMeta } from './types';
+import type { DemoInstance, DemoMeta, DemoProps } from './types';
 
 export const meta: DemoMeta = {
   id: 'bouncing',
   name: 'Bouncing Balls',
   description: 'Interactive physics simulation with mouse repulsion',
   icon: '⚽',
-  category: 'interactive',
+  category: 'game',
   renderer: 'canvas2d',
+  useCases: [52, 53],
+  tags: ['physics', 'bouncing', 'interactive', 'game'],
 };
 
 interface Ball {
@@ -150,6 +152,25 @@ export function create(canvas: HTMLCanvasElement): DemoInstance {
       canvas.width = w;
       canvas.height = h;
     },
-    setProps() {},
+    setProps(props: DemoProps) {
+      if (props.mouseActive) {
+        mouse.active = props.mouseActive;
+        mouse.x = props.mouseX! * width;
+        mouse.y = props.mouseY! * height;
+      }
+      if (props.intensity !== undefined) {
+        for (let i = 0; i < Math.floor(props.intensity * 5); i++) {
+          balls.push({
+            x: width / 2,
+            y: height / 2,
+            vx: (Math.random() - 0.5) * 6,
+            vy: (Math.random() - 0.5) * 4,
+            radius: Math.random() * 15 + 5,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            gravity: GRAVITY + Math.random() * 0.2,
+          });
+        }
+      }
+    },
   };
 }

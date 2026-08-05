@@ -555,6 +555,43 @@ body.fullscreen .zoom-indicator { display: none; }
 body.fullscreen { cursor: none; }
 body.fullscreen * { cursor: none !important; }
 
+.demo-picker {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  background: rgba(17, 17, 17, 0.9);
+  border: 1px solid #2a2a2a;
+  border-radius: 16px;
+  padding: 16px 24px;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+
+.demo-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #e0e0e0;
+  transition: all 0.15s;
+}
+
+.demo-option:hover {
+  background: rgba(0, 212, 255, 0.1);
+  border-color: #00d4ff;
+  color: #fff;
+}
+
+.demo-icon { font-size: 18px; }
+
 /* ============ SCROLLBAR ============ */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

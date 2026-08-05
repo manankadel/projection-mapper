@@ -90,6 +90,15 @@
         <div class="panel-body" id="contentList"></div>
       </div>
 
+      <!-- Demos Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>Demos</span>
+          <button class="btn-sm" id="btnAudioToggle" onclick="ui.toggleAudio()" title="Toggle audio reactivity">🔊</button>
+        </div>
+        <div class="panel-body" id="demoList"></div>
+      </div>
+
       <!-- Surface Properties -->
       <div class="panel" id="surfaceProps">
         <div class="panel-header">Surface Properties</div>
@@ -200,6 +209,8 @@
           <div><kbd>Tab</kbd> Next point</div>
           <div><kbd>[ ]</kbd> Next/prev surface</div>
           <div><kbd>T</kbd> Test pattern</div>
+          <div><kbd>D</kbd> Demo picker</div>
+          <div><kbd>A</kbd> Audio reactivity</div>
           <div><kbd>1-3</kbd> Tools</div>
           <div><kbd>Ctrl+Z</kbd> Undo</div>
           <div><kbd>Ctrl+S</kbd> Export</div>
@@ -212,6 +223,7 @@
     <main id="viewport">
       <canvas id="gl-canvas"></canvas>
       <div id="control-overlay"></div>
+      <div id="demoPicker" class="demo-picker" style="display:none"></div>
       <div id="editBadge" class="badge" style="display:none">EDIT MODE</div>
       <div id="zoomIndicator" class="zoom-indicator">100%</div>
     </main>

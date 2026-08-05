@@ -1,4 +1,4 @@
-import type { DemoInstance, DemoMeta } from './types';
+import type { DemoInstance, DemoMeta, DemoProps } from './types';
 
 export const meta: DemoMeta = {
   id: 'matrix',
@@ -7,6 +7,8 @@ export const meta: DemoMeta = {
   icon: '🌧',
   category: 'interactive',
   renderer: 'canvas2d',
+  useCases: [28],
+  tags: ['matrix', 'rain', 'digital', 'code'],
 };
 
 interface Drop {
@@ -105,6 +107,6 @@ export function create(canvas: HTMLCanvasElement): DemoInstance {
         }
       }
     },
-    setProps() {},
+    setProps(_props: DemoProps) {},
   };
 }

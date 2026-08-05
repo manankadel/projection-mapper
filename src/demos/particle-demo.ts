@@ -1,4 +1,4 @@
-import type { DemoInstance, DemoMeta } from './types';
+import type { DemoInstance, DemoMeta, DemoProps } from './types';
 
 export const meta: DemoMeta = {
   id: 'particles',
@@ -7,6 +7,8 @@ export const meta: DemoMeta = {
   icon: '✨',
   category: 'ambient',
   renderer: 'canvas2d',
+  useCases: [7, 11, 37, 50],
+  tags: ['particles', 'ambient', 'music', 'interactive'],
 };
 
 interface Particle {
@@ -49,6 +51,8 @@ export function create(canvas: HTMLCanvasElement): DemoInstance {
   const mouse = { x: width / 2, y: height / 2, active: false };
   let raf: number;
 
+  let audioIntensity = 0;
+
   const render = () => {
     ctx.fillStyle = 'rgba(10, 10, 20, 0.15)';
     ctx.fillRect(0, 0, width, height);
@@ -58,8 +62,8 @@ export function create(canvas: HTMLCanvasElement): DemoInstance {
     for (const p of particles) {
       p.vx += (Math.random() - 0.5) * 0.02;
       p.vy += (Math.random() - 0.5) * 0.02;
-      p.vx *= 0.97;
-      p.vy *= 0.97;
+      p.vx *= 0.97 - audioIntensity * 0.03;
+      p.vy *= 0.97 - audioIntensity * 0.03;
 
       if (mouse.active) {
         const dx = mouse.x - p.x;
@@ -132,6 +136,13 @@ export function create(canvas: HTMLCanvasElement): DemoInstance {
       canvas.width = w;
       canvas.height = h;
     },
-    setProps() {},
+    setProps(props: DemoProps) {
+      if (props.mouseX !== undefined && props.mouseY !== undefined) {
+        mouse.x = props.mouseX * width;
+        mouse.y = props.mouseY * height;
+        mouse.active = props.mouseActive ?? false;
+      }
+      if (props.amplitude !== undefined) audioIntensity = props.amplitude;
+    },
   };
 }

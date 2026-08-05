@@ -4,6 +4,8 @@ import { ContentManager } from '../core/ContentManager';
 import { ShowManager } from '../core/ShowManager';
 import { MIDIController } from '../core/MIDIController';
 import { OSCController } from '../core/OSCController';
+import { MediaStore } from '../core/MediaStore';
+import { projectionLink } from '../core/ProjectionLink';
 import type { ContentTemplateEngine } from './ContentTemplates';
 import type { DemoManager } from '../demos/DemoManager';
 import {
@@ -21,6 +23,7 @@ export class UI {
   private oscController: OSCController;
   private templateEngine: ContentTemplateEngine | null = null;
   demoManager: DemoManager | null = null;
+  private _audioEnabled = false;
 
   private surfaces: SurfaceData[] = [];
   private state: ViewState = {
@@ -39,6 +42,8 @@ export class UI {
   private dragStart: Vec2 = { x: 0, y: 0 };
   private dragPointStart: Vec2 = { x: 0, y: 0 };
   private nudgeKeyActive = false;
+  private projectionDirty = false;
+  private lastProjectionBroadcast = 0;
   private undoStack: string[] = [];
   private maxUndo = 50;
   private animationFrame: number = 0;
@@ -402,6 +407,14 @@ export class UI {
         e.preventDefault();
         this.cycleTestPattern();
         break;
+      case 'd':
+        e.preventDefault();
+        this.showDemoPicker();
+        break;
+      case 'a':
+        e.preventDefault();
+        this.toggleAudio();
+        break;
       case '+':
       case '=':
         e.preventDefault();
@@ -544,26 +557,37 @@ export class UI {
   }
 
   async project() {
-    try {
-      const nav = navigator as any;
-      if (nav.getScreenDetails) {
-        const details = await nav.getScreenDetails();
-        if (details.screens.length > 1) {
-          const savedLabel = localStorage.getItem('projmapper-projector-display');
-          const target =
-            details.screens.find((s: any) => s.label === savedLabel) ||
-            details.screens.find((s: any) => !s.isPrimary) ||
-            details.screens[0];
-          if (target) {
-            window.moveTo(target.left, target.top);
-            localStorage.setItem('projmapper-projector-display', target.label || '');
-          }
-        }
-      }
-    } catch (_e) {
-      // Screen Details API not available — fullscreen current display
+    const output = window.open('output.html', 'projmap-output', 'width=1280,height=720');
+    if (!output) {
+      // Popup blocked — fall back to single-window fullscreen
+      this.toggleFullscreen();
+      return;
     }
-    this.toggleFullscreen();
+    this.broadcastState();
+    projectionLink.onMessage((msg) => {
+      if (msg.type !== 'ready') return;
+      (async () => {
+        try {
+          const nav = navigator as any;
+          if (nav.getScreenDetails) {
+            const details = await nav.getScreenDetails();
+            if (details.screens.length > 1) {
+              const savedLabel = localStorage.getItem('projmapper-projector-display');
+              const target =
+                details.screens.find((s: any) => s.label === savedLabel) ||
+                details.screens.find((s: any) => !s.isPrimary) ||
+                details.screens[0];
+              if (target) {
+                output.moveTo(target.left, target.top);
+                localStorage.setItem('projmapper-projector-display', target.label || '');
+              }
+            }
+          }
+        } catch (_e) {
+          // Screen Details API not available — leave output where it opened
+        }
+      })();
+    });
   }
 
   resetWarp() {
@@ -632,6 +656,7 @@ export class UI {
   loadSurfaceProps() {
     const surf = this.surfaces[this.state.selectedSurface ?? 0];
     if (!surf) return;
+    this.projectionDirty = true;
 
     const setVal = (id: string, val: any) => {
       const el = document.getElementById(id) as HTMLInputElement;
@@ -696,6 +721,12 @@ export class UI {
 
     for (const file of Array.from(files)) {
       const item = await this.contentManager.loadFile(file);
+      // Persist bytes so the output window can use them too
+      try {
+        await MediaStore.save(item.id, file.name, file.type, file);
+      } catch (e) {
+        console.warn('[UI] MediaStore save failed:', e);
+      }
       // Auto-assign to selected surface
       const surf = this.surfaces[this.state.selectedSurface ?? 0];
       if (surf) {
@@ -734,6 +765,7 @@ export class UI {
     const surf = this.surfaces[this.state.selectedSurface ?? 0];
     if (surf) {
       surf.contentId = pattern;
+      this.renderControlOverlay();
     }
   }
 
@@ -745,6 +777,42 @@ export class UI {
     const surf = this.surfaces[this.state.selectedSurface ?? 0];
     if (surf) {
       surf.contentId = contentId;
+      this.renderControlOverlay();
+    }
+  }
+
+  assignDemo(demoId: string) {
+    if (!this.demoManager) return;
+    this.demoManager.assignToSurface(this, demoId);
+  }
+
+  toggleAudio() {
+    if (!this.demoManager) return;
+    if (this._audioEnabled) {
+      this._audioEnabled = false;
+      this.demoManager.setDemoProps({ amplitude: 0, bass: 0, mids: 0, treble: 0 });
+    } else {
+      this._audioEnabled = true;
+      this.demoManager.initAudio();
+    }
+    const btn = document.getElementById('btnAudioToggle');
+    if (btn) btn.textContent = this._audioEnabled ? '🔊' : '🔇';
+  }
+
+  showDemoPicker() {
+    if (!this.demoManager) return;
+    const demos = this.demoManager.getDemos();
+    const html = demos.map((d: any) => `
+      <div class="demo-option" onclick="ui.assignDemo('${d.id}')">
+        <span class="demo-icon">${d.icon}</span>
+        <span class="demo-name">${d.name}</span>
+      </div>
+    `).join('');
+    const picker = document.getElementById('demoPicker');
+    if (picker) {
+      picker.innerHTML = html;
+      picker.style.display = 'block';
+      setTimeout(() => picker.style.display = 'none', 5000);
     }
   }
 
@@ -753,11 +821,6 @@ export class UI {
     if (surf) {
       surf.contentId = null;
     }
-  }
-
-  assignDemo(demoId: string) {
-    if (!this.demoManager) return;
-    this.demoManager.assignToSurface(this, demoId);
   }
 
   // ============================================================
@@ -777,6 +840,8 @@ export class UI {
       this.renderSurfaceList();
       this.renderControlOverlay();
       this.renderContentList();
+      await this.restoreFileContent();
+      this.broadcastState();
     }
   }
 
@@ -785,7 +850,7 @@ export class UI {
     this.showManager.saveToLocal();
   }
 
-  loadShow() {
+  async loadShow() {
     if (this.showManager.loadFromLocal()) {
       const config = this.showManager.getConfig();
       this.surfaces = config.surfaces;
@@ -793,14 +858,25 @@ export class UI {
       this.renderSurfaceList();
       this.renderControlOverlay();
       this.renderContentList();
-      // Reload textures for restored content so it renders immediately
-      const items = this.contentManager.getAllItems();
-      for (const item of items) {
-        if (item.type === 'image') {
-          this.renderer.loadImage(item.id, item.src);
-        } else if (item.type === 'video') {
-          this.renderer.loadVideo(item.id, item.src);
-        }
+      await this.restoreFileContent();
+      this.broadcastState();
+    }
+  }
+
+  // Rebuild working blob: URLs for content persisted in IndexedDB (old
+  // blob URLs die on page reload; the output window needs fresh ones too).
+  private async restoreFileContent() {
+    const keys = await MediaStore.keys();
+    for (const id of keys) {
+      const rec = await MediaStore.get(id);
+      if (!rec) continue;
+      const url = URL.createObjectURL(rec.blob);
+      const item = this.contentManager.getItem(id);
+      if (item) item.src = url;
+      if (rec.type.startsWith('video/')) {
+        this.renderer.loadVideo(id, url);
+      } else if (rec.type.startsWith('image/')) {
+        this.renderer.loadImage(id, url);
       }
     }
   }
@@ -865,6 +941,23 @@ export class UI {
     this.renderControlOverlay();
   }
 
+  renderDemoList() {
+    if (!this.demoManager) return;
+    const list = document.getElementById('demoList');
+    if (!list) return;
+
+    const demos = this.demoManager.getDemos();
+    list.innerHTML = demos.map(d => `
+      <div class="content-item" onclick="ui.assignDemo('${d.id}')" data-id="${d.id}">
+        <div class="content-icon">${d.icon}</div>
+        <div class="content-info">
+          <div class="content-name">${d.name}</div>
+          <div class="content-type">${d.category}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
   toggleSurfaceVisibility(index: number) {
     this.surfaces[index].visible = !this.surfaces[index].visible;
     this.renderSurfaceList();
@@ -898,9 +991,9 @@ export class UI {
       case 'pattern': return '🔲';
       case 'color': return '🎨';
       case 'gradient': return '🌈';
+      case 'canvas': return '🎨';
       case 'webcam': return '📷';
       case 'ndi': return '📡';
-      case 'canvas': return '🎨';
       default: return '📄';
     }
   }
@@ -909,6 +1002,7 @@ export class UI {
   // CONTROL OVERLAY
   // ============================================================
   private renderControlOverlay() {
+    this.projectionDirty = true;
     this.overlay.innerHTML = '';
 
     const surf = this.surfaces[this.state.selectedSurface ?? 0];
@@ -1092,9 +1186,29 @@ export class UI {
     const loop = () => {
       this.renderer.render(this.surfaces, this.contentManager.items);
       document.getElementById('statusFPS')!.textContent = `FPS: ${this.renderer.fps}`;
+
+      const now = performance.now();
+      if (this.projectionDirty && now - this.lastProjectionBroadcast > 100) {
+        this.projectionDirty = false;
+        this.lastProjectionBroadcast = now;
+        this.broadcastState();
+      }
+
       this.animationFrame = requestAnimationFrame(loop);
     };
     loop();
+  }
+
+  private broadcastState() {
+    try {
+      const items = this.contentManager.getAllItems().map(i => {
+        const src = i.src && i.src.startsWith('blob:') ? '' : i.src;
+        return { ...i, src };
+      });
+      projectionLink.broadcast({ type: 'state', surfaces: this.surfaces, content: items });
+    } catch (_e) {
+      // BroadcastChannel unavailable — single-window mode
+    }
   }
 
   destroy() {
