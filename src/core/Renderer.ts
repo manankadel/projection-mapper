@@ -191,6 +191,17 @@ export class Renderer {
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    // Commercial: handle context loss (projector cable unplug, GPU reset)
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      console.warn('[Renderer] Context lost');
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      console.log('[Renderer] Context restored — reinitializing');
+      // Textures will be re-uploaded on next render via updateCanvasTextures/updateVideoTexture
+    });
+
     console.log('[Renderer] Constructor complete');
   }
 
@@ -456,11 +467,13 @@ export class Renderer {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
+        const old = this.textures.get(id);
+        if (old) this.gl.deleteTexture(old);
         const tex = this.createGLTexture(img);
         this.textures.set(id, tex);
         resolve();
       };
-      img.onerror = reject;
+      img.onerror = () => reject(new Error(`Failed to load image: ${src.slice(0, 80)}`));
       img.src = src;
     });
   }

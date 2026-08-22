@@ -14,27 +14,42 @@ const renderer = new Renderer(canvas);
 let surfaces: SurfaceData[] = [];
 let contentMap = new Map<string, ContentItem>();
 
+const blobUrls = new Map<string, string>();
+
 async function resolveContent(items: ContentItem[]) {
+  // Revoke old blob URLs to prevent memory leak in long shows
+  for (const url of blobUrls.values()) URL.revokeObjectURL(url);
+  blobUrls.clear();
+
   const map = new Map<string, ContentItem>();
   for (const item of items) {
     if (item.type === 'image' || item.type === 'video') {
       const rec = await MediaStore.get(item.id);
       if (rec) {
         const url = URL.createObjectURL(rec.blob);
+        blobUrls.set(item.id, url);
         const local: ContentItem = { ...item, src: url };
         map.set(item.id, local);
         if (rec.type.startsWith('video/')) {
-          renderer.loadVideo(local.id, local.src);
+          const v = renderer.loadVideo(local.id, local.src);
+          v.muted = true;
+          v.play().catch(() => {});
         } else if (rec.type.startsWith('image/')) {
-          renderer.loadImage(local.id, local.src);
+          renderer.loadImage(local.id, local.src).catch(e => console.warn('[Output] image load:', e));
         }
         continue;
+      } else {
+        console.warn('[Output] Missing media for', item.id, '— was file saved to MediaStore?');
       }
     }
     map.set(item.id, { ...item });
   }
   contentMap = map;
 }
+
+window.addEventListener('beforeunload', () => {
+  for (const url of blobUrls.values()) URL.revokeObjectURL(url);
+});
 
 let hasReceivedState = false;
 
