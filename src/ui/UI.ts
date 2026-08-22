@@ -44,6 +44,8 @@ export class UI {
   private nudgeKeyActive = false;
   private projectionDirty = false;
   private lastProjectionBroadcast = 0;
+  private hasOutputWindow = false;
+  private lastOutputSeen = 0;
   private undoStack: string[] = [];
   private maxUndo = 50;
   private animationFrame: number = 0;
@@ -160,10 +162,32 @@ export class UI {
         this.broadcastState();
       }
       if (msg?.type === 'ready') {
-        // Output is ready, ensure it gets latest state
+        this.hasOutputWindow = true;
+        this.lastOutputSeen = performance.now();
+        this.updateProjectorStatus();
         this.broadcastState();
       }
     });
+  }
+
+  private updateProjectorStatus() {
+    const dot = document.querySelector('#statusbar .status-dot') as HTMLElement;
+    const statusText = dot?.parentElement;
+    const isLive = this.hasOutputWindow && performance.now() - this.lastOutputSeen < 3000;
+    if (statusText) {
+      // Keep dot, update text after it
+      const text = isLive ? ' Projector: Connected' : ' Ready — click PROJECT ▶ for projector';
+      // statusText contains dot + text node; replace text
+      if (statusText.childNodes.length > 1) {
+        statusText.childNodes[1].textContent = text;
+      } else {
+        statusText.appendChild(document.createTextNode(text));
+      }
+    }
+    if (dot) {
+      dot.style.background = isLive ? '#22c55e' : '#ef4444';
+      dot.style.boxShadow = isLive ? '0 0 6px #22c55e' : 'none';
+    }
   }
 
   private setupMIDI() {
@@ -1224,15 +1248,26 @@ export class UI {
   // RENDER LOOP
   // ============================================================
   private startRenderLoop() {
+    let lastStatusUpdate = 0;
     const loop = () => {
       this.renderer.render(this.surfaces, this.contentManager.items);
-      document.getElementById('statusFPS')!.textContent = `FPS: ${this.renderer.fps}`;
+      const fpsEl = document.getElementById('statusFPS');
+      if (fpsEl) fpsEl.textContent = `FPS: ${this.renderer.fps}`;
 
       const now = performance.now();
       if (this.projectionDirty && now - this.lastProjectionBroadcast > 100) {
         this.projectionDirty = false;
         this.lastProjectionBroadcast = now;
         this.broadcastState();
+      }
+      if (now - lastStatusUpdate > 1000) {
+        lastStatusUpdate = now;
+        this.updateProjectorStatus();
+        // Auto-clear output flag if no heartbeat for 3s
+        if (this.hasOutputWindow && now - this.lastOutputSeen > 3000) {
+          this.hasOutputWindow = false;
+          this.updateProjectorStatus();
+        }
       }
 
       this.animationFrame = requestAnimationFrame(loop);

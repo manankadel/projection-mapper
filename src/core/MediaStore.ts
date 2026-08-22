@@ -34,7 +34,14 @@ export const MediaStore = {
     const d = await db();
     return new Promise((resolve, reject) => {
       const tx = d.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put({ id, name, type, blob });
+      const req = tx.objectStore(STORE).put({ id, name, type, blob });
+      req.onerror = () => {
+        const err: any = req.error;
+        if (err?.name === 'QuotaExceededError') {
+          alert(`Media storage full — "${name}" (${(blob.size/1024/1024).toFixed(1)} MB) too large. Export and clear old content from Content panel, or use a smaller file (resize to projector resolution).`);
+        }
+        reject(err);
+      };
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });

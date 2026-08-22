@@ -136,8 +136,7 @@ export class Renderer {
   private canvasContentItems: Map<string, ContentItem> = new Map();
   private patternCanvas: HTMLCanvasElement;
   private patternCtx: CanvasRenderingContext2D;
-  private patternTexture: WebGLTexture | null = null;
-  private lastPatternType: string = '';
+  private patternTextures: Map<string, WebGLTexture> = new Map();
   private frameCount = 0;
   private lastFpsTime = performance.now();
   fps = 0;
@@ -240,11 +239,16 @@ export class Renderer {
     const dpr = window.devicePixelRatio || 1;
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
-    if (this.canvas.width !== w * dpr || this.canvas.height !== h * dpr) {
-      this.canvas.width = w * dpr;
-      this.canvas.height = h * dpr;
+    if (w === 0 || h === 0) return;
+    if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) {
+      this.canvas.width = Math.round(w * dpr);
+      this.canvas.height = Math.round(h * dpr);
     }
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  private getCssResolution(): [number, number] {
+    return [this.canvas.clientWidth || this.canvas.width, this.canvas.clientHeight || this.canvas.height];
   }
 
   render(surfaces: SurfaceData[], contentMap: Map<string, ContentItem>) {
@@ -265,12 +269,11 @@ export class Renderer {
 
     this.updateCanvasTextures();
 
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const [cssW, cssH] = this.getCssResolution();
 
     for (const surf of surfaces) {
       if (!surf.visible) continue;
-      this.renderSurface(surf, contentMap, w, h);
+      this.renderSurface(surf, contentMap, cssW, cssH);
     }
   }
 
@@ -364,11 +367,14 @@ export class Renderer {
   }
 
   private getPatternTexture(type: string): WebGLTexture {
-    if (this.patternTexture && this.lastPatternType === type) {
-      return this.patternTexture;
-    }
+    const cached = this.patternTextures.get(type);
+    if (cached) return cached;
 
-    const w = 1024, h = 1024;
+    // Use output-size aware generation for 4K sharpness, fallback 1024
+    const maxTex = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) as number;
+    const targetW = Math.min(2048, maxTex);
+    const targetH = Math.min(2048, maxTex);
+    const w = targetW, h = targetH;
     this.patternCanvas.width = w;
     this.patternCanvas.height = h;
     const ctx = this.patternCtx;
@@ -457,9 +463,9 @@ export class Renderer {
       }
     }
 
-    this.patternTexture = this.createGLTexture(this.patternCanvas);
-    this.lastPatternType = type;
-    return this.patternTexture;
+    const tex = this.createGLTexture(this.patternCanvas);
+    this.patternTextures.set(type, tex);
+    return tex;
   }
 
   loadImage(id: string, src: string): Promise<void> {
@@ -469,11 +475,23 @@ export class Renderer {
       img.onload = () => {
         const old = this.textures.get(id);
         if (old) this.gl.deleteTexture(old);
-        const tex = this.createGLTexture(img);
+        const maxTex = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) as number;
+        let source: TexImageSource = img;
+        if (img.naturalWidth > maxTex || img.naturalHeight > maxTex) {
+          const scale = Math.min(maxTex / img.naturalWidth, maxTex / img.naturalHeight);
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.naturalWidth * scale);
+          c.height = Math.round(img.naturalHeight * scale);
+          const ctx = c.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          source = c;
+          console.warn(`[Renderer] Downscaled image ${img.naturalWidth}x${img.naturalHeight} to ${c.width}x${c.height} for projector (max ${maxTex})`);
+        }
+        const tex = this.createGLTexture(source);
         this.textures.set(id, tex);
         resolve();
       };
-      img.onerror = () => reject(new Error(`Failed to load image: ${src.slice(0, 80)}`));
+      img.onerror = () => reject(new Error(`Failed to load image (CORS or not found): ${src.slice(0, 80)}`));
       img.src = src;
     });
   }
@@ -593,6 +611,7 @@ export class Renderer {
 
   destroy() {
     this.textures.forEach(t => this.gl.deleteTexture(t));
+    this.patternTextures.forEach(t => this.gl.deleteTexture(t));
     this.videoElements.forEach(v => {
       const stream = v.srcObject as MediaStream;
       stream?.getTracks().forEach(t => t.stop());

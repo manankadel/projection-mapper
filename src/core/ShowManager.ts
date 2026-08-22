@@ -154,12 +154,18 @@ export class ShowManager {
     });
   }
 
-  // Save to localStorage
-  saveToLocal(key: string = 'projection-mapper-show') {
+  // Save to localStorage — returns false on quota exceeded so UI can warn
+  saveToLocal(key: string = 'projection-mapper-show'): boolean {
     try {
       localStorage.setItem(key, this.exportJSON());
-    } catch (e) {
+      return true;
+    } catch (e: any) {
       console.error('Failed to save to localStorage:', e);
+      if (e?.name === 'QuotaExceededError' || e?.code === 22) {
+        try { localStorage.removeItem(key); } catch {}
+        alert('Storage full — show too large for browser storage. Export your show to a file (Export Show) to avoid losing work, then clear old media from Content panel.');
+      }
+      return false;
     }
   }
 
