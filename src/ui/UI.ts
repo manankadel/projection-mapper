@@ -69,6 +69,8 @@ export class UI {
 
     this.setupEventListeners();
     console.log('[UI] Event listeners attached');
+    this.setupProjectionLink();
+    console.log('[UI] ProjectionLink setup done');
     this.setupMIDI();
     console.log('[UI] MIDI setup done');
     this.setupOSC();
@@ -147,6 +149,19 @@ export class UI {
     document.addEventListener('fullscreenchange', () => {
       if (!document.fullscreenElement) {
         document.body.classList.remove('fullscreen');
+      }
+    });
+  }
+
+  private setupProjectionLink() {
+    // Always respond to output window requests — fixes race where output opened after state broadcast
+    projectionLink.onMessage((msg) => {
+      if (msg?.type === 'request-state') {
+        this.broadcastState();
+      }
+      if (msg?.type === 'ready') {
+        // Output is ready, ensure it gets latest state
+        this.broadcastState();
       }
     });
   }
@@ -565,15 +580,11 @@ export class UI {
   }
 
   async project() {
-    const output = window.open('output.html', 'projmap-output', 'width=1280,height=720');
-    if (!output) {
-      // Popup blocked — fall back to single-window fullscreen
-      this.toggleFullscreen();
-      return;
-    }
-    this.broadcastState();
-    projectionLink.onMessage((msg) => {
-      if (msg.type !== 'ready') return;
+    // Attach ready listener BEFORE opening so we don't miss the first 'ready' broadcast
+    let output: Window | null = null;
+    const readyHandler = (msg: any) => {
+      if (msg?.type !== 'ready') return;
+      // Output window is ready — move it to projector display if we have multiple screens
       (async () => {
         try {
           const nav = navigator as any;
@@ -585,8 +596,9 @@ export class UI {
                 details.screens.find((s: any) => s.label === savedLabel) ||
                 details.screens.find((s: any) => !s.isPrimary) ||
                 details.screens[0];
-              if (target) {
-                output.moveTo(target.left, target.top);
+              if (target && output) {
+                try { output.moveTo(target.left, target.top); } catch {}
+                try { output.focus(); output.resizeTo(target.width || 1280, target.height || 720); } catch {}
                 localStorage.setItem('projmapper-projector-display', target.label || '');
               }
             }
@@ -594,8 +606,29 @@ export class UI {
         } catch (_e) {
           // Screen Details API not available — leave output where it opened
         }
+        // Ensure output gets state even if initial broadcast was missed
+        this.broadcastState();
+        setTimeout(() => this.broadcastState(), 100);
+        setTimeout(() => this.broadcastState(), 500);
       })();
-    });
+    };
+    const off = projectionLink.onMessage(readyHandler);
+
+    output = window.open('output.html', 'projmap-output', 'width=1280,height=720');
+    if (!output) {
+      off();
+      // Popup blocked — give clear instructions, fall back to single-window fullscreen
+      alert('Popup blocked — allow popups for this site, or drag this window to your projector display and press F to fullscreen.\n\nTip: System Settings → Displays → Use as Extended Display (not Mirror)');
+      this.toggleFullscreen();
+      return;
+    }
+
+    // Broadcast immediately and also after a short delay for late joiners
+    this.broadcastState();
+    setTimeout(() => this.broadcastState(), 50);
+    setTimeout(() => this.broadcastState(), 300);
+    // Clean up ready listener after 5s (output will use request-state thereafter)
+    setTimeout(() => off(), 5000);
   }
 
   resetWarp() {
